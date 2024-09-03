@@ -21,6 +21,19 @@ def mostrar_tablero(tablero, jugador_actual):
     print(colored(f"\nTurno del Jugador {jugador_actual}", 'green'))
 
 def realizar_movimiento(tablero, pos, jugador):
+
+    """
+    Realiza un movimiento en el tablero desde la posición dada.
+
+    Args:
+        tablero (list): Estado actual del tablero.
+        pos (int): Posición desde donde se recogerán las semillas.
+        jugador (int): Número del jugador que está realizando el movimiento.
+
+    Returns:
+        int: Última posición donde se dejó una semilla.
+    """
+
     semillas = tablero[pos]
     tablero[pos] = 0
     i = pos
@@ -35,6 +48,17 @@ def realizar_movimiento(tablero, pos, jugador):
     return i
 
 def capturar(tablero, pos, jugador):
+
+    """
+    Captura las semillas del pozo opuesto si el último movimiento termina 
+    en un pozo vacío del jugador.
+
+    Args:
+        tablero (list): Estado actual del tablero.
+        pos (int): Última posición donde se dejó una semilla.
+        jugador (int): Número del jugador que está realizando el movimiento.
+    """
+
     oponente = 12 - pos
     if tablero[pos] == 1 and tablero[oponente] > 0:
         if (jugador == 1 and 0 <= pos <= 5) or (jugador == 2 and 7 <= pos <= 12):
@@ -58,6 +82,17 @@ def agregar_semillas_restantes(tablero):
 
 # Funciones de Empoderamiento
 def calcular_empoderamiento(tablero, jugador):
+    """
+    Calcula el empoderamiento para un jugador dado. El empoderamiento mide 
+    la cantidad de futuros estados posibles desde el estado actual.
+
+    Args:
+        tablero (list): Estado actual del tablero.
+        jugador (int): Número del jugador para el cual se calcula el empoderamiento.
+
+    Returns:
+        int: Número de estados posibles que se pueden alcanzar.
+    """
     posibles_estados = set()
     for accion in range(6):
         copia_tablero = tablero.copy()
@@ -69,6 +104,15 @@ def calcular_empoderamiento(tablero, jugador):
 # Agente Cooperativo que actúa como uno solo
 class AgenteCooperativoUnificado:
     def __init__(self, learning_rate=0.1, discount_factor=0.9, exploration_rate=0.1, exploration_decay=0.99):
+        """
+        Inicializa los parámetros del agente.
+
+        Args:
+            learning_rate (float): Tasa de aprendizaje para actualizar los valores Q.
+            discount_factor (float): Factor de descuento para ponderar recompensas futuras.
+            exploration_rate (float): Tasa de exploración inicial.
+            exploration_decay (float): Tasa de decaimiento de la exploración.
+        """
         self.q_table = {}
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
@@ -77,15 +121,45 @@ class AgenteCooperativoUnificado:
         self.cargar_q_table()
 
     def obtener_valor_q(self, estado, accion):
+        """
+        Recupera el valor Q para una combinación específica de estado y acción.
+
+        Args:
+            estado (tuple): Estado actual del tablero como una tupla.
+            accion (int): Acción que se quiere evaluar.
+
+        Returns:
+            float: Valor Q correspondiente al estado y acción dados.
+        """
         return self.q_table.get((estado, accion), 0.0)
 
     def actualizar_q_valor(self, estado, accion, recompensa, siguiente_estado):
+        """
+        Actualiza el valor Q basado en la recompensa recibida y el estado futuro.
+
+        Args:
+            estado (tuple): Estado actual del tablero.
+            accion (int): Acción realizada.
+            recompensa (float): Recompensa recibida por la acción.
+            siguiente_estado (tuple): Estado del tablero después de realizar la acción.
+        """
         maximo_valor_q = max([self.obtener_valor_q(siguiente_estado, a) for a in range(6)], default=0.0)
         valor_q_actual = self.obtener_valor_q(estado, accion)
         nuevo_valor_q = valor_q_actual + self.learning_rate * (recompensa + self.discount_factor * maximo_valor_q - valor_q_actual)
         self.q_table[(estado, accion)] = nuevo_valor_q
 
     def elegir_accion(self, tablero, jugador):
+        """
+        Selecciona la mejor acción basada en los valores Q y el empoderamiento,
+        considerando tanto la exploración como la explotación.
+
+        Args:
+            tablero (list): Estado actual del tablero.
+            jugador (int): Número del jugador que va a tomar la acción.
+
+        Returns:
+            int: Acción seleccionada (posición del pozo).
+        """
         estado = tuple(tablero)
         if np.random.rand() < self.exploration_rate:
             return np.random.choice([i for i in range(6) if tablero[i + (7 if jugador == 2 else 0)] > 0])
