@@ -1,21 +1,24 @@
 import numpy as np
 import csv
 import pickle
+from termcolor import colored
 
 # Funciones básicas del juego de Mancala
 def inicializar_tablero():
     return [4, 4, 4, 4, 4, 4, 0, 4, 4, 4, 4, 4, 4, 0]
 
-def mostrar_tablero(tablero):
-    print("      11   10   9   8    7    6")
+def mostrar_tablero(tablero, jugador_actual):
+    print("      11   10   9   8   7   6")
     print("   +----+----+----+----+----+----+")
-    print(f"   | {tablero[12]:2} | {tablero[11]:2} | {tablero[10]:2} | {tablero[9]:2} | {tablero[8]:2} | {tablero[7]:2} |")
+    print(f"   | {colored(tablero[12], 'yellow')} | {colored(tablero[11], 'yellow')} | {colored(tablero[10], 'yellow')} | {colored(tablero[9], 'yellow')} | {colored(tablero[8], 'yellow')} | {colored(tablero[7], 'yellow')} |")
     print("   +----+----+----+----+----+----+")
-    print(f"   |{tablero[13]:2} |                    | {tablero[6]:2}|")
+    print(f" {colored(tablero[13], 'yellow')}  |                    | {colored(tablero[6], 'cyan')}  ")
     print("   +----+----+----+----+----+----+")
-    print(f"   | {tablero[0]:2} | {tablero[1]:2} | {tablero[2]:2} | {tablero[3]:2} | {tablero[4]:2} | {tablero[5]:2} |")
+    print(f"   | {colored(tablero[0], 'cyan')} | {colored(tablero[1], 'cyan')} | {colored(tablero[2], 'cyan')} | {colored(tablero[3], 'cyan')} | {colored(tablero[4], 'cyan')} | {colored(tablero[5], 'cyan')} |")
     print("   +----+----+----+----+----+----+")
     print("      0    1    2    3    4    5")
+
+    print(colored(f"\nTurno del Jugador {jugador_actual}", 'green'))
 
 def realizar_movimiento(tablero, pos, jugador):
     semillas = tablero[pos]
@@ -65,11 +68,12 @@ def calcular_empoderamiento(tablero, jugador):
 
 # Agente Cooperativo que actúa como uno solo
 class AgenteCooperativoUnificado:
-    def __init__(self, learning_rate=0.1, discount_factor=0.9, exploration_rate=0.2):
+    def __init__(self, learning_rate=0.1, discount_factor=0.9, exploration_rate=0.1, exploration_decay=0.99):
         self.q_table = {}
         self.learning_rate = learning_rate
         self.discount_factor = discount_factor
         self.exploration_rate = exploration_rate
+        self.exploration_decay = exploration_decay
         self.cargar_q_table()
 
     def obtener_valor_q(self, estado, accion):
@@ -169,6 +173,9 @@ def entrenar_agente_cooperativo_y_registrar(partidas=10000):
 
         registrar_partida(partida_num, ganador, tablero)
 
+        agente_cooperativo_original.exploration_rate *= agente_cooperativo_original.exploration_decay
+        agente_cooperativo_copia.exploration_rate *= agente_cooperativo_copia.exploration_decay
+
     agente_cooperativo_original.guardar_q_table()
     agente_cooperativo_copia.guardar_q_table()
 
@@ -185,9 +192,9 @@ def jugar_contra_agente_cooperativo():
     jugador = 1
 
     while not fin_del_juego(tablero):
+        mostrar_tablero(tablero, jugador)
+
         if jugador == 1:
-            print("Tu turno:")
-            print(mostrar_tablero(tablero))
             pos = int(input("Ingrese la posición donde desea colocar la semilla (0-5): "))
             while pos < 0 or pos > 5 or tablero[pos] == 0:
                 print("Posición inválida. Por favor, ingrese una posición válida.")
@@ -201,20 +208,20 @@ def jugar_contra_agente_cooperativo():
         if ultima_pos != jugador * 7 - 1:
             jugador = turno(jugador)
 
-        print(mostrar_tablero(tablero))
-
     agregar_semillas_restantes(tablero)
 
+    mostrar_tablero(tablero, jugador)
+
     if tablero[6] > tablero[13]:
-        print("¡Ganaste!")
+        print(colored("¡Ganaste!", 'cyan'))
     elif tablero[13] > tablero[6]:
-        print("Agente cooperativo ganó.")
+        print(colored("Agente cooperativo ganó.", 'amarillo'))
     else:
         print("Empate.")
 
 def main():
     while True:
-        print("Menú de inicio:")
+        print(colored("Menú de inicio:", 'green'))
         print("1. Entrenar al agente cooperativo")
         print("2. Jugar contra el agente cooperativo")
         print("3. Salir")
@@ -229,7 +236,7 @@ def main():
         elif opcion == "3":
             break
         else:
-            print("Opción inválida. Por favor, ingrese una opción válida.")
+            print(colored("Opción inválida. Por favor, ingrese una opción válida.", 'red'))
 
 if __name__ == "__main__":
     main()
