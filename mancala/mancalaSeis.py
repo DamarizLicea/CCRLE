@@ -100,6 +100,11 @@ def calcular_empoderamiento(tablero, jugador):
         capturar(copia_tablero, ultima_pos, jugador)
         posibles_estados.add(tuple(copia_tablero))
     return len(posibles_estados)
+#agregar mutual information
+#en ambientes discretos
+
+#divergencia kl= difernecia entre distribuciones 
+#sacar
 
 # Agente Cooperativo que actúa como uno solo
 class AgenteCooperativoUnificado:
