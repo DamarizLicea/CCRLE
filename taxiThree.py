@@ -5,6 +5,7 @@ import requests
 import telegram
 import asyncio
 from infoTelegram import TOKEN, CHAT_ID
+from infoTelegram import TOKEN, CHAT_ID
 
 # Definición de las acciones
 actions = {
