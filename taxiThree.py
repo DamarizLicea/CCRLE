@@ -4,6 +4,7 @@ import time
 import requests
 import telegram
 import asyncio
+from infoTelegram import TOKEN, CHAT_ID
 
 # Definición de las acciones
 actions = {
@@ -15,8 +16,7 @@ actions = {
     5: "Dejar"
 }
 
-TOKEN = '7386977030:AAG15A9-JKyUzjrwVBFeAlXykC48QsQW_yk'
-CHAT_ID = '7483893498'
+
 
 async def send_telegram_message(message):
     bot = telegram.Bot(token=TOKEN)
