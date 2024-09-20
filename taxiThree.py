@@ -16,29 +16,10 @@ actions = {
     5: "Dejar"
 }
 
-
-
 async def send_telegram_message(message):
     bot = telegram.Bot(token=TOKEN)
     await bot.send_message(chat_id=CHAT_ID, text=message)
 
-def calculate_entropy(state, action, transition_counts):
-    """
-    Calcula la entropía de la distribución de probabilidad de las transiciones de estado.
-    
-    :param state: El estado actual.
-    :param action: La acción tomada.
-    :param transition_counts: Un arreglo de NumPy que contiene los conteos de transiciones.
-    :return: La entropía de la distribución de probabilidad.
-    """
-    total_transitions = np.sum(transition_counts[state, action])
-    entropy = 0.0
-    for next_state in range(transition_counts.shape[2]):
-        count = transition_counts[state, action, next_state]
-        if count > 0:
-            probability = count / total_transitions
-            entropy -= probability * np.log2(probability)
-    return entropy
 
 def main():
     env = gym.make('Taxi-v3', render_mode='human')
@@ -74,7 +55,6 @@ def main():
             transition_counts[state, action, new_state] += 1
 
             # Calcular la entropía
-            entropy = calculate_entropy(state, action, transition_counts)
 
             # Reward Engineering
             if action == 4:  # Recoger
@@ -86,6 +66,7 @@ def main():
                 if info.get('passenger') == 'destination':
                     reward += 20  # Recompensa por dejar correctamente
                     successful_deliveries += 1  # Incrementar el contador de entregas exitosas
+                    print(successful_deliveries)
 
                     # Enviar mensaje de Telegram y detener el programa
                     message = f"Entrega exitosa al hotel en el episodio {episode} después de {step} pasos."
