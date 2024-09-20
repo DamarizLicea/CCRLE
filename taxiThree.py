@@ -5,7 +5,7 @@ import requests
 import telegram
 import asyncio
 from infoTelegram import TOKEN, CHAT_ID
-from infoTelegram import TOKEN, CHAT_ID
+
 
 # Definición de las acciones
 actions = {
@@ -54,9 +54,7 @@ def main():
 
             # Actualizar los conteos de transiciones
             transition_counts[state, action, new_state] += 1
-
-            # Calcular la entropía
-
+            
             # Reward Engineering
             if action == 4:  # Recoger
                 if info.get('passenger') == 'taxi':
