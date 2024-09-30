@@ -6,6 +6,8 @@ import telegram
 import asyncio
 import os
 from infoTelegram import TOKEN, CHAT_ID
+import matplotlib.pyplot as plt
+import pickle
 
 # Definición de las acciones
 actions = {
@@ -17,62 +19,55 @@ actions = {
     5: "Dejar"
 }
 
-
+# Función para enviar mensajes a Telegram
 async def send_telegram_message(message):
     bot = telegram.Bot(token=TOKEN)
     await bot.send_message(chat_id=CHAT_ID, text=message)
 
 
-def calculate_empowerment(state, transition_counts, n=1):
+def softmax_action_selection(q_values, temperature=1.0):
+    exp_values = np.exp(q_values / temperature)
+    probs = exp_values / np.sum(exp_values)
+    return np.random.choice(len(q_values), p=probs)
+
+def calculate_empowerment(state, transition_counts):
     """
-    Calcula el empoderamiento como la capacidad del canal de la secuencia de acciones y los estados futuros.
+    Calcula el empoderamiento usando tanto la distribución marginal de los futuros estados
+    como la información mutua entre las acciones y los futuros estados.
     
-    :param state: El estado actual del agente.
-    :param transition_counts: Un arreglo de NumPy que contiene los conteos de transiciones.
-    :param n: Número de pasos a considerar (n-step empowerment).
-    :return: El empoderamiento.
+    :param state: El estado actual del taxi.
+    :param transition_counts: Matriz 3D (state_space x action_space x future_state_space) de las transiciones.
+    :return: El empowerment total.
     """
-    empowerment = 0.0
-    # action_seq es la secuencia de acciones que se toman desde el estado actual, tipo de dato: int
-    # transition_counts tiene 3 dimensiones: (estado actual, secuencia de acciones(numero de veces que se ha tomado una accion), estado futuro), tipo de dato: np.array
-    # por cada secuencia de acciones (int) en la cantidad de acciones que tenemos (6)
-    for action_seq in range(transition_counts.shape[1]):
-        # p(a) = Σ p(s', a) -> Total de transiciones para una acción
-        # Cuántas veces una acción particular lleva a cada estado futuro
-        total_transitions_action = np.sum(transition_counts[state, action_seq])
-        if total_transitions_action == 0:
-            continue  # Si no hay transiciones, pasa a la siguiente acción
-
-        # Probabilidad de llegar a cualquier estado futuro dado que tienes una secuencia de acciones p(s' | a)
-        # p(s' | a,s) = p(s', a, s) **REESCRIBIR ESTO** / p(a) -> Cuantas veces desde un estado particular, se tomaron ciertas acciones / total de veces que hemos tomado esa acción
-        prob_state_given_action = transition_counts[state, action_seq] / total_transitions_action
-        
-        for future_state in range(transition_counts.shape[2]):
-            # Σ p(s') -> Suma de todas las transiciones hacia el estado futuro
-            total_transitions_state = np.sum(transition_counts[future_state])
-
-            #amigo Bayes, teorema.
-            # user de git gjcamacho
-            
-            if total_transitions_state == 0:
-                continue  # Si no hay transiciones, pasamos al siguiente estado
-
-            # Probabilidad de que el agente termine en un estado futuro específico dado un estado actual y una secuencia de acciones
-            # p(s'|s,a) = cuántas veces, desde un estado inicial, se realizó una secuencia de acciones 
-            #             y terminó en un estado futuro / total de transiciones que comienzan desde ese estado
-            prob_state_action = transition_counts[state, action_seq, future_state] / total_transitions_state
-            
-            # Si la probabilidad condicional es mayor a cero, entonces calculamos la contribución al empoderamiento
-            if prob_state_given_action[future_state] > 0:
-                # Fórmula de información mutua: I(S'; A) = Σ p(s' | a) * log2( p(s' | a) / p(s'|s,a) )
-                empowerment += prob_state_given_action[future_state] * np.log2(prob_state_given_action[future_state] / prob_state_action)
+    state_slice = transition_counts[state]  # shape: (action_space, future_state_space)
+    
+    # Distribución marginal de las acciones: sumamos sobre los estados futuros
+    action_marginal = np.sum(state_slice, axis=1)  # shape: (action_space,)
+    
+    # Distribución marginal de los estados futuros: sumamos sobre las acciones
+    future_state_marginal = np.sum(state_slice, axis=0)  # shape: (future_state_space,)
+    
+    # Calcular empowerment basado en la distribución de futuros estados
+    nonzero_future_probs = future_state_marginal[future_state_marginal > 0]
+    future_state_empowerment = -np.sum(nonzero_future_probs * np.log2(nonzero_future_probs))
+    
+    # Probabilidad condicional p(future_state | action)
+    prob_state_given_action = state_slice / action_marginal[:, None]
+    
+    # Empowerment basado en la información mutua entre acciones y futuros estados
+    action_empowerment = 0
+    for action_prob, action_transitions in zip(action_marginal, prob_state_given_action):
+        if action_prob > 0:  # Solo incluir acciones con probabilidad positiva
+            nonzero_probs = action_transitions[action_transitions > 0]
+            action_empowerment += action_prob * np.sum(nonzero_probs * np.log2(nonzero_probs))
+    
+    # Empowerment total: combinamos ambos términos
+    empowerment = future_state_empowerment + (-action_empowerment)
     
     return empowerment
 
+# Obtener las coordenadas del destino
 def get_destination_coords(destination):
-    """
-    Traduce la posición del destino a coordenadas en el mapa, para calcular la distancia en terminos del taxi
-    """
     if destination == 0:  # Rojo
         return 0, 0
     elif destination == 1:  # Verde
@@ -85,14 +80,13 @@ def get_destination_coords(destination):
         print(f"Error: destino desconocido {destination}.")
         return None
 
+# Calcular la distancia Manhattan al destino
 def calculate_distance_to_destination(env, state, destination_coords):
-    """
-    Calcula la distancia entre el taxi y el destino.
-    """
     taxi_row, taxi_col, _, _ = env.unwrapped.decode(state)  # Decodificar el estado
     dest_row, dest_col = destination_coords
     return abs(taxi_row - dest_row) + abs(taxi_col - dest_col)
 
+# Cargar Q-Table
 def load_qtable(filename):
     if os.path.exists(filename):
         try:
@@ -103,10 +97,12 @@ def load_qtable(filename):
     else:
         return np.zeros((500, 6))  # Nueva Q-table si no existe el archivo
 
+# Guardar Q-Table
 def save_qtable(qtable, filename):
-    np.save(filename, qtable)
+    with open(filename, 'wb') as f:
+        pickle.dump(qtable, f)
 
-
+# Función principal
 def main():
     env = gym.make('Taxi-v3', render_mode='human')
     qtable_filename = "qtable_instance_1.npy"
@@ -115,10 +111,10 @@ def main():
     transition_counts = np.zeros((env.observation_space.n, env.action_space.n, env.observation_space.n))
 
     learning_rate = 0.01
-    discount_rate = 0.99
-    num_episodes = 1
-    max_steps = 10
-    epsilon = 1.0  # Inicialmente alta para mayor exploración
+    discount_rate = 0.95
+    num_episodes = 3500
+    max_steps = 90
+    epsilon = 0.9  # Inicialmente alta para mayor exploración
     min_epsilon = 0.01
     decay_rate = 0.995  # Tasa de decaimiento de epsilon
 
@@ -145,59 +141,55 @@ def main():
             new_state, reward, done, truncated, info = env.step(action)
 
             taxi_row, taxi_col, passenger, destination = env.unwrapped.decode(new_state)
-            empowerment=calculate_empowerment(state, transition_counts, n=1)
+            empowerment = calculate_empowerment(state, transition_counts)
+            
+            # Imprimir estado y empowerment
             print(f"Paso: {step}, Acción: {actions[action]}, Nuevo estado: ({taxi_row}, {taxi_col}), Pasajero: {passenger}, Destino: {destination}, Empowerment: {empowerment}")
-            #Recuerda que passenger en 4 es dentro del taxi
-
+            
             # Actualizar los conteos de transiciones
-
             transition_counts[state, action, new_state] += 1
+            
+            # Calcular distancia al destino y sumar a la recompensa
             distance = calculate_distance_to_destination(env, new_state, destination_coords)
-            empowerment = calculate_empowerment(state, transition_counts, n=1)
+            reward -= distance  # Penalización por distancia
 
-            reward += empowerment - distance 
-
-            # Reward Engineering
+            # Acciones de recoger y dejar al pasajero
             if action == 4:  # Recoger
-                if (taxi_row, taxi_col) == get_destination_coords(passenger):
+                if passenger != 4 and (taxi_row, taxi_col) == get_destination_coords(passenger):
                     reward += 10  # Recompensa por recoger correctamente
-                    passenger = 4
+                    passenger = 4  # Indica que el pasajero está en el taxi
                 else:
                     reward -= 10  # Penalización por recoger incorrectamente
+
             elif action == 5:  # Dejar
-                if passenger == 4 and (taxi_row, taxi_col) == destination_coords:
+                if done:
                     reward += 50  # Recompensa por dejar correctamente
                     successful_deliveries += 1
-
-                    message = f"Entrega exitosa al hotel en el episodio {episode} después de {step} pasos."
-                    asyncio.run(send_telegram_message(message))
-                    print(message)
-
-                    save_qtable(qtable, qtable_filename)
-
-                    return  # Detener el programa
+                    print(f"Entrega exitosa en el episodio {episode} después de {step} pasos.")
+                    save_qtable(qtable, qtable_filename)  # Guardar Q-table
+                    break  # Detener el episodio al lograr la entrega
                 else:
                     reward -= 10  # Penalización por dejar incorrectamente
             else:
-                reward -= 1  # Penalización por cada paso 
-
+                reward -= 1  # Penalización por cada paso
 
             # Actualizar Q-table
             qtable[state, action] = qtable[state, action] + learning_rate * (reward + discount_rate * np.max(qtable[new_state, :]) - qtable[state, action])
 
             state = new_state
-            total_rewards += reward  # Acumular la recompensa total
+            total_rewards += reward
 
             if done or truncated:
                 break
 
-        np.save(qtable_filename, qtable)  # Guardar la Q-table 
+        # Guardar la Q-table
+        np.save(qtable_filename, qtable)  
 
         # Decaimiento de epsilon
         epsilon = max(min_epsilon, epsilon * decay_rate)
 
-        print(f"Episode: {episode}, Total Reward: {total_rewards}")
-        print(f"Paso: {step}, Recompensa: {reward}")
+        print(f"Episode: {episode}, Recompensa total: {total_rewards}")
+        print(f"Entregas exitosas hasta ahora: {successful_deliveries}")
 
     end_time = time.time()
     print(f"Tiempo total de entrenamiento: {end_time - start_time} segundos")
@@ -205,6 +197,7 @@ def main():
 
     np.save(qtable_filename, qtable)  # Guardar la Q-table al finalizar
 
+    # Enviar mensaje de Telegram al finalizar
     message = f"Entrenamiento completado. Tiempo total de entrenamiento: {end_time - start_time} segundos. Entregas exitosas al hotel: {successful_deliveries}"
     asyncio.run(send_telegram_message(message))
 
