@@ -47,3 +47,49 @@ if __name__ == "__main__":
     epsilon = 1.0
 
     q_table = train_agent(env, q_table, alpha, gamma, epsilon, episodes=7500)
+
+
+    # def calculate_empowerment(env, state, n=2, epsilon=1e-10):
+#     """
+#     Calcula el empoderamiento utilizando las probabilidades de transición del entorno Taxi.
+    
+#     :param env: El entorno de Taxi de Gymnasium.
+#     :param state: El estado actual del agente.
+#     :param n: Número de pasos a considerar (n-step empowerment).
+#     :param epsilon: Umbral para evitar logaritmos de 0 o divisiones por 0.
+#     :return: El empoderamiento.
+#     """
+#     empowerment = 0.0
+#     action_space = env.action_space.n  # Número de acciones posibles
+
+#     for action in range(action_space):
+#         # Obtener las transiciones desde el estado actual para la acción específica
+#         transitions = env.unwrapped.P[state][action]
+        
+#         for prob, next_state, reward, done in transitions:
+#             if prob == 0:
+#                 continue  # Si la probabilidad es 0, la ignoramos
+
+#             # Obtener las transiciones desde el siguiente estado
+#             future_transitions = env.unwrapped.P[next_state]
+
+#             # Calcular la probabilidad marginal del siguiente estado
+#             total_future_prob = sum([t[0] for future_action in future_transitions.values() for t in future_action])
+
+#             if total_future_prob == 0:
+#                 continue
+
+#             for future_action in future_transitions:
+#                 for f_prob, future_state, f_reward, f_done in future_transitions[future_action]:
+#                     if f_prob == 0:
+#                         continue
+                    
+#                     # Calcular la probabilidad condicional del siguiente estado dado la acción
+#                     prob_conditional = f_prob / total_future_prob
+                    
+#                     # Evitar valores muy pequeños y logaritmos de 0
+#                     if prob_conditional > epsilon and prob > epsilon:
+#                         # Aplicar la fórmula de información mutua para calcular la contribución al empowerment
+#                         empowerment += prob * f_prob * np.log2(prob_conditional / prob)
+
+#     return empowerment

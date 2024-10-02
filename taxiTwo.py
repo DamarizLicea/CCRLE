@@ -25,68 +25,123 @@ async def send_telegram_message(message):
     await bot.send_message(chat_id=CHAT_ID, text=message)
 
 
-def softmax_action_selection(q_values, temperature=1.0):
-    exp_values = np.exp(q_values / temperature)
-    probs = exp_values / np.sum(exp_values)
-    return np.random.choice(len(q_values), p=probs)
+def filter_invalid_actions_by_position(y,x):
+    """
+    Filtra las acciones inválidas basadas en la posición del taxi en el mapa.
+    :param x: Fila actual del taxi.
+    :param y: Columna actual del taxi.
+    :return: Lista de acciones válidas.
+    """
+    # Mapa de acciones: 0: Sur, 1: Norte, 2: Este, 3: Oeste
+    valid_actions = [0, 1, 2, 3, 4, 5]  # Acciones: Sur, Norte, Este, Oeste, Recoger, Dejar
 
-# def calculate_empowerment(env, state, n=2, epsilon=1e-10):
+    # Limitar movimiento según las coordenadas y las paredes
+    if y == 0:  # Borde superior
+        valid_actions.remove(1)  # No puede moverse al norte
+    if y == 4:  # Borde inferior
+        valid_actions.remove(0)  # No puede moverse al sur
+    if x == 0:  # Borde izquierdo
+        valid_actions.remove(3)  # No puede moverse al oeste
+    if x == 4:  # Borde derecho
+        valid_actions.remove(2)  # No puede moverse al este
+
+    # Paredes adicionales según el entorno de Taxi
+    if (x == 2 and y == 0) or (x == 2 and y == 1) or (x == 1 and y == 3) or (x == 1 and y == 4) or (x == 3 and y == 3) or (x == 3 and y == 4):
+        valid_actions.remove(3)  # No puede moverse al oeste en esas posiciones
+    if (x == 1 and y == 0) or (x == 1 and y == 1) or (x == 2 and y == 3) or (x == 2 and y == 4) or (x == 0 and y == 3) or (x == 0 and y == 4):
+        valid_actions.remove(2)  # No puede moverse al este
+
+    return valid_actions
+
+
+# def calculate_marginal_distributions(env, state):
 #     """
-#     Calcula el empoderamiento utilizando las probabilidades de transición del entorno Taxi.
+#     Calcula las distribuciones marginales P(future_state|state) y P(action|state).
     
 #     :param env: El entorno de Taxi de Gymnasium.
-#     :param state: El estado actual del agente.
-#     :param n: Número de pasos a considerar (n-step empowerment).
-#     :param epsilon: Umbral para evitar logaritmos de 0 o divisiones por 0.
-#     :return: El empoderamiento.
+#     :param state: El estado actual.
+#     :return: Las distribuciones marginales.
 #     """
-#     empowerment = 0.0
-#     action_space = env.action_space.n  # Número de acciones posibles
-
-#     for action in range(action_space):
-#         # Obtener las transiciones desde el estado actual para la acción específica
-#         transitions = env.unwrapped.P[state][action]
+#     transition_slice = env.P[state]
+#     taxi_row, taxi_col, _, _ = env.unwrapped.decode(state)
+#     valid_actions = filter_invalid_actions_by_position(taxi_row, taxi_col)
+    
+#     # crear distribuciones marginales
+#     #marginal action es un vector de tamaño 6, uno por cada acción
+#     marginal_action = np.zeros(env.action_space.n)  # P(action|state)
+#     #marginal future state es un vector de tamaño 500, uno por cada estado
+#     marginal_future_state = np.zeros(env.observation_space.n)  # P(future_state|state)
+    
+#     # Recorre cada acción posible
+#     for action, transitions in valid_transitions.items():
+#         # total prob action siempre es 1
+#         total_prob_action = sum([prob for prob, _, _, _ in transitions])
+#         # los valores de probabilidad de cada acción se guardan en el vector marginal_action
+#         # por ejemplo si la acción 0 tiene probabilidad 1, entonces en la posición 0 del vector marginal_action se guarda 1
+#         marginal_action[action] = total_prob_action
         
-#         for prob, next_state, reward, done in transitions:
-#             if prob == 0:
-#                 continue  # Si la probabilidad es 0, la ignoramos
+#         # Sumar las probabilidades de todos los futuros estados
+#         for prob, future_state, _, _ in transitions:
+#             marginal_future_state[future_state] += prob
 
-#             # Obtener las transiciones desde el siguiente estado
-#             future_transitions = env.unwrapped.P[next_state]
+#     return marginal_action, marginal_future_state
 
-#             # Calcular la probabilidad marginal del siguiente estado
-#             total_future_prob = sum([t[0] for future_action in future_transitions.values() for t in future_action])
+def calculate_marginal_distributions(env, state):
+    """
+    Calcula las distribuciones marginales P(future_state|state) y P(action|state).
+    
+    :param env: El entorno de Taxi de Gymnasium.
+    :param state: El estado actual.
+    :return: Las distribuciones marginales.
+    """
+    transition_slice = env.P[state]  # Transiciones para el estado actual
+    taxi_row, taxi_col, _, _ = env.unwrapped.decode(state)  # Decodificar la posición actual del taxi
+    valid_actions = filter_invalid_actions_by_position(taxi_row, taxi_col)  # Acciones válidas
+    
+    # Inicializar distribuciones marginales
+    marginal_action = np.zeros(env.action_space.n)  # P(action|state)
+    marginal_future_state = np.zeros(env.observation_space.n)  # P(future_state|state)
+    
+    # Recorre cada acción válida
+    for action in valid_actions:
+        transitions = transition_slice[action]
+        # Total probabilidad de la acción
+        total_prob_action = sum([prob for prob, _, _, _ in transitions])
+        marginal_action[action] = total_prob_action
+        
+        # Sumar las probabilidades de los futuros estados
+        for prob, future_state, _, _ in transitions:
+            marginal_future_state[future_state] += prob
 
-#             if total_future_prob == 0:
-#                 continue
-
-#             for future_action in future_transitions:
-#                 for f_prob, future_state, f_reward, f_done in future_transitions[future_action]:
-#                     if f_prob == 0:
-#                         continue
-                    
-#                     # Calcular la probabilidad condicional del siguiente estado dado la acción
-#                     prob_conditional = f_prob / total_future_prob
-                    
-#                     # Evitar valores muy pequeños y logaritmos de 0
-#                     if prob_conditional > epsilon and prob > epsilon:
-#                         # Aplicar la fórmula de información mutua para calcular la contribución al empowerment
-#                         empowerment += prob * f_prob * np.log2(prob_conditional / prob)
-
-#     return empowerment
+    return marginal_action, marginal_future_state
 
 
-def calculate_empowerment(state, action, transition_counts):
-    total_transitions = np.sum(transition_counts[state, action])
-    if total_transitions == 0:
-        return 0.0
-    entropy = 0.0
-    for next_state in range(transition_counts.shape[2]):
-        count = transition_counts[state, action, next_state]
-        if count > 0:
-            probability = count / total_transitions
-            entropy -= probability * np.log2(probability)
-    return entropy
+def calculate_empowerment(env, state, epsilon=1e-10):
+    """
+    Calcula el empoderamiento utilizando las distribuciones marginales.
+    
+    :param env: El entorno de Taxi de Gymnasium.
+    :param state: El estado actual.
+    :param epsilon: Umbral para evitar logaritmos de 0 o divisiones por 0.
+    :return: El empoderamiento.
+    """
+    empowerment = 0.0
+    
+    # Obtener las distribuciones marginales
+    marginal_action, marginal_future_state = calculate_marginal_distributions(env, state)
+    
+    for action in range(env.action_space.n):
+        if marginal_action[action] == 0:  # Acción inválida, saltarla
+            continue
+
+        for future_state in range(env.observation_space.n):
+            prob_action = marginal_action[action]
+            prob_future = marginal_future_state[future_state]
+
+            if prob_action > epsilon and prob_future > epsilon:
+                empowerment += prob_action * prob_future * np.log2(prob_future / prob_action)
+
+    return empowerment
 
 # Obtener las coordenadas del destino
 def get_destination_coords(destination):
@@ -135,7 +190,7 @@ def main():
     learning_rate = 0.05
     discount_rate = 0.95
     num_episodes = 3
-    max_steps = 90
+    max_steps = 100
     epsilon = 0.9  # Inicialmente alta para mayor exploración
     min_epsilon = 0.01
     decay_rate = 0.99  # Tasa de decaimiento de epsilon
@@ -163,7 +218,7 @@ def main():
             new_state, reward, done, truncated, info = env.step(action)
 
             taxi_row, taxi_col, passenger, destination = env.unwrapped.decode(new_state)
-            empowerment = calculate_empowerment(state,  action, transition_counts)
+            empowerment = calculate_empowerment(env, state, epsilon=1e-10)
 
             
             # Imprimir estado y empowerment
