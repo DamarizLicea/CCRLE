@@ -1,12 +1,10 @@
 import numpy as np
 import gymnasium as gym
 import time
-import requests
 import telegram
 import asyncio
 import os
-from infoTelegram import TOKEN, CHAT_ID
-import matplotlib.pyplot as plt
+from taxi.infoTelegram import TOKEN, CHAT_ID
 import pickle
 
 # Definición de las acciones
@@ -28,8 +26,8 @@ async def send_telegram_message(message):
 def filter_invalid_actions_by_position(y,x):
     """
     Filtra las acciones inválidas basadas en la posición del taxi en el mapa.
-    :param x: Fila actual del taxi.
-    :param y: Columna actual del taxi.
+    :param x: Columna actual del taxi.
+    :param y: Fila actual del taxi.
     :return: Lista de acciones válidas.
     """
     # Mapa de acciones: 0: Sur, 1: Norte, 2: Este, 3: Oeste
@@ -53,46 +51,13 @@ def filter_invalid_actions_by_position(y,x):
 
     return valid_actions
 
-
-# def calculate_marginal_distributions(env, state):
-#     """
-#     Calcula las distribuciones marginales P(future_state|state) y P(action|state).
-    
-#     :param env: El entorno de Taxi de Gymnasium.
-#     :param state: El estado actual.
-#     :return: Las distribuciones marginales.
-#     """
-#     transition_slice = env.P[state]
-#     taxi_row, taxi_col, _, _ = env.unwrapped.decode(state)
-#     valid_actions = filter_invalid_actions_by_position(taxi_row, taxi_col)
-    
-#     # crear distribuciones marginales
-#     #marginal action es un vector de tamaño 6, uno por cada acción
-#     marginal_action = np.zeros(env.action_space.n)  # P(action|state)
-#     #marginal future state es un vector de tamaño 500, uno por cada estado
-#     marginal_future_state = np.zeros(env.observation_space.n)  # P(future_state|state)
-    
-#     # Recorre cada acción posible
-#     for action, transitions in valid_transitions.items():
-#         # total prob action siempre es 1
-#         total_prob_action = sum([prob for prob, _, _, _ in transitions])
-#         # los valores de probabilidad de cada acción se guardan en el vector marginal_action
-#         # por ejemplo si la acción 0 tiene probabilidad 1, entonces en la posición 0 del vector marginal_action se guarda 1
-#         marginal_action[action] = total_prob_action
-        
-#         # Sumar las probabilidades de todos los futuros estados
-#         for prob, future_state, _, _ in transitions:
-#             marginal_future_state[future_state] += prob
-
-#     return marginal_action, marginal_future_state
-
 def calculate_marginal_distributions(env, state):
     """
     Calcula las distribuciones marginales P(future_state|state) y P(action|state).
     
-    :param env: El entorno de Taxi de Gymnasium.
-    :param state: El estado actual.
-    :return: Las distribuciones marginales.
+    :param env
+    :param state
+    :return: Distribuciones marginales.
     """
     transition_slice = env.P[state]  # Transiciones para el estado actual
     taxi_row, taxi_col, _, _ = env.unwrapped.decode(state)  # Decodificar la posición actual del taxi
@@ -120,10 +85,10 @@ def calculate_empowerment(env, state, epsilon=1e-10):
     """
     Calcula el empoderamiento utilizando las distribuciones marginales.
     
-    :param env: El entorno de Taxi de Gymnasium.
-    :param state: El estado actual.
-    :param epsilon: Umbral para evitar logaritmos de 0 o divisiones por 0.
-    :return: El empoderamiento.
+    :param env
+    :param state
+    :param epsilon
+    :return: Empowerment.
     """
     empowerment = 0.0
     
@@ -157,11 +122,6 @@ def get_destination_coords(destination):
         print(f"Error: destino desconocido {destination}.")
         return None
 
-# Calcular la distancia Manhattan al destino
-def calculate_distance_to_destination(env, state, destination_coords):
-    taxi_row, taxi_col, _, _ = env.unwrapped.decode(state)  # Decodificar el estado
-    dest_row, dest_col = destination_coords
-    return abs(taxi_row - dest_row) + abs(taxi_col - dest_col)
 
 # Cargar Q-Table
 def load_qtable(filename):
@@ -207,8 +167,6 @@ def main():
     
         print(f"Episodio: {episode}, Estado inicial: ({taxi_row}, {taxi_col}), Pasajero: {passenger}, Destino: {destination},")
 
-        destination_coords = get_destination_coords(destination)
-
         for step in range(max_steps):
             if np.random.uniform(0, 1) < epsilon:
                 action = env.action_space.sample()
@@ -219,18 +177,13 @@ def main():
 
             taxi_row, taxi_col, passenger, destination = env.unwrapped.decode(new_state)
             empowerment = calculate_empowerment(env, state, epsilon=1e-10)
-
-            
-            # Imprimir estado y empowerment
+        
             print(f"Paso: {step}, Acción: {actions[action]}, Nuevo estado: ({taxi_row}, {taxi_col}), Pasajero: {passenger}, Destino: {destination}, Empowerment: {empowerment}")
             
             # Actualizar los conteos de transiciones
             transition_counts[state, action, new_state] += 1
-            
-            # Calcular distancia al destino y sumar a la recompensa
-            distance = calculate_distance_to_destination(env, new_state, destination_coords)
 
-            # Acciones de recoger y dejar al pasajero
+            # Reward engineering
             if action == 4:  # Recoger
                 if passenger != 4 and (taxi_row, taxi_col) == get_destination_coords(passenger):
                     reward += 10  # Recompensa por recoger correctamente
@@ -258,8 +211,6 @@ def main():
 
             if done or truncated:
                 break
-
-        # Guardar la Q-table
         np.save(qtable_filename, qtable)  
 
         # Decaimiento de epsilon
@@ -272,9 +223,9 @@ def main():
     print(f"Tiempo total de entrenamiento: {end_time - start_time} segundos")
     print(f"Entregas exitosas al hotel: {successful_deliveries}")
 
-    np.save(qtable_filename, qtable)  # Guardar la Q-table al finalizar
+    np.save(qtable_filename, qtable)
 
-    # Enviar mensaje de Telegram al finalizar
+    # ------------------ TELEGRAM ------------------ #
     message = f"Entrenamiento completado. Tiempo total de entrenamiento: {end_time - start_time} segundos. Entregas exitosas al hotel: {successful_deliveries}"
     asyncio.run(send_telegram_message(message))
 
