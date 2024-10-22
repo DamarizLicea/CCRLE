@@ -5,7 +5,7 @@ import requests
 import telegram
 import asyncio
 import os
-from infoTelegram import TOKEN, CHAT_ID
+from taxi.infoTelegram import TOKEN, CHAT_ID
 import matplotlib.pyplot as plt
 
 # Definición de las acciones
