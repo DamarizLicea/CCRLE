@@ -4,7 +4,7 @@ import time
 import telegram
 import asyncio
 import os
-from taxi.infoTelegram import TOKEN, CHAT_ID
+from infoTelegram import TOKEN, CHAT_ID
 import pickle
 
 # Definición de las acciones
@@ -51,12 +51,43 @@ def filter_invalid_actions_by_position(y,x):
 
     return valid_actions
 
-def calculate_marginal_distributions(env, state):
+
+def simulate_n_step_transitions(env, state, n):
     """
-    Calcula las distribuciones marginales P(future_state|state) y P(action|state).
+    Simula las transiciones a n pasos y devuelve un diccionario de conteos de transiciones a futuros estados.
+    
+    :param env: Entorno de Taxi
+    :param state: Estado inicial
+    :param n: Número de pasos en el futuro
+    :return: Diccionario con los futuros estados y sus conteos.
+    """
+    future_state_counts = np.zeros(env.observation_space.n)
+
+    def simulate_step(current_state, current_n):
+        if current_n == 0:
+            return
+        for action in range(env.action_space.n):
+            transitions = env.P[current_state][action]
+            for prob, future_state, _, _ in transitions:
+                future_state_counts[future_state] += prob
+                simulate_step(future_state, current_n - 1)
+
+    simulate_step(state, n)
+    
+    # Normalizar las cuentas a una distribución válida
+    total_future_counts = np.sum(future_state_counts)
+    if total_future_counts > 0:
+        future_state_counts /= total_future_counts  # Normalizar para que sumen a 1
+    
+    return future_state_counts
+
+def calculate_marginal_distributions_n_steps(env, state, n):
+    """
+    Calcula las distribuciones marginales P(future_state|state) y P(action|state) a n pasos.
     
     :param env
     :param state
+    :param n: Número de pasos en el futuro.
     :return: Distribuciones marginales.
     """
     transition_slice = env.P[state]  # Transiciones para el estado actual
@@ -74,26 +105,26 @@ def calculate_marginal_distributions(env, state):
         total_prob_action = sum([prob for prob, _, _, _ in transitions])
         marginal_action[action] = total_prob_action
         
-        # Sumar las probabilidades de los futuros estados
-        for prob, future_state, _, _ in transitions:
-            marginal_future_state[future_state] += prob
+        # Simulación de n pasos hacia el futuro
+        future_state_counts = simulate_n_step_transitions(env, state, n)
+        marginal_future_state += future_state_counts
 
     return marginal_action, marginal_future_state
 
-
-def calculate_empowerment(env, state, epsilon=1e-10):
+def calculate_empowerment_n_steps(env, state, n, epsilon=1e-10):
     """
-    Calcula el empoderamiento utilizando las distribuciones marginales.
+    Calcula el empoderamiento utilizando las distribuciones marginales a n pasos.
     
     :param env
     :param state
+    :param n: Número de pasos en el futuro.
     :param epsilon
     :return: Empowerment.
     """
     empowerment = 0.0
     
     # Obtener las distribuciones marginales
-    marginal_action, marginal_future_state = calculate_marginal_distributions(env, state)
+    marginal_action, marginal_future_state = calculate_marginal_distributions_n_steps(env, state, n)
     
     for action in range(env.action_space.n):
         if marginal_action[action] == 0:  # Acción inválida, saltarla
@@ -127,7 +158,7 @@ def get_destination_coords(destination):
 def load_qtable(filename):
     if os.path.exists(filename):
         try:
-            return np.load(filename)  # Cargar Q-table existente
+            return np.load(filename, allow_pickle=True)
         except EOFError:
             print("El archivo de la Q-table está vacío o corrupto, inicializando nueva Q-table.")
             return np.zeros((500, 6))  # Nueva Q-table si el archivo está dañado
@@ -176,7 +207,7 @@ def main():
             new_state, reward, done, truncated, info = env.step(action)
 
             taxi_row, taxi_col, passenger, destination = env.unwrapped.decode(new_state)
-            empowerment = calculate_empowerment(env, state, epsilon=1e-10)
+            empowerment = calculate_empowerment_n_steps(env, new_state, n=2, epsilon=1e-10)
         
             print(f"Paso: {step}, Acción: {actions[action]}, Nuevo estado: ({taxi_row}, {taxi_col}), Pasajero: {passenger}, Destino: {destination}, Empowerment: {empowerment}")
             
