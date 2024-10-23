@@ -15,7 +15,8 @@ def calculate_empowerment_grid(env):
             for passenger in range(5):
                 for destination in range(4):
                     state = env.unwrapped.encode(row, col, passenger, destination)
-                    empowerment = calculate_empowerment_n_steps(env, state, 1, epsilon=1e-10)
+                    empowerment = calculate_empowerment_n_steps(env, state, 74)
+                    # en los 74 pasos, el empowerment no cambia se queda en 6.9541
                     empowerment_sum += empowerment
 
             # Promedio de empowerment para la celda (row, col)
