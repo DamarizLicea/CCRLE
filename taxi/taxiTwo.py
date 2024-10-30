@@ -111,7 +111,7 @@ def main():
     learning_rate = 0.05
     discount_rate = 0.95
     num_episodes = 3
-    max_steps = 100
+    max_steps = 1000
     epsilon = 0.9
     min_epsilon = 0.01
     decay_rate = 0.99 

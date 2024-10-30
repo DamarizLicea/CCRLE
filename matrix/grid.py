@@ -56,9 +56,9 @@ def generate_empowerment_heatmap(grid_size, steps):
     plt.show()
 
 # tamaño de la cuadrícula
-grid_size = 5  
+grid_size = 3  
 
 # pasos para calcular el empowerment
-n_steps = 4
+n_steps = 2
 
 generate_empowerment_heatmap(grid_size, n_steps)

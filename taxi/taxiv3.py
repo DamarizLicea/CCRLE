@@ -108,7 +108,7 @@ def main():
     max_empowerment_n = 0  # Guardar en qué valor de n se alcanzó el empowerment máximo
     empowerment_history = []  # Lista para almacenar el empowerment en cada paso
     
-    n_step_max = 12
+    n_step_max = 74
 
     # Ciclo de 1 episodio
     for episode in range(1): 
