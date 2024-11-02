@@ -4,7 +4,7 @@ import time
 import telegram
 import asyncio
 import os
-from infoTelegram import TOKEN, CHAT_ID
+from taxi.infoTelegram import TOKEN, CHAT_ID
 import pickle
 
 # Definición de las acciones
@@ -22,51 +22,89 @@ async def send_telegram_message(message):
     bot = telegram.Bot(token=TOKEN)
     await bot.send_message(chat_id=CHAT_ID, text=message)
 
-def simulate_n_step_transitions(env, state, n):
-    """
-    Simula las transiciones a n pasos y devuelve los estados alcanzables, sin contar estados repetidos.
-    params:
-        env: entorno de Gym
-        state: estado inicial
-        n: número de pasos
-    """
-    # Almacena los estados alcanzables (set para evitar repetidos)
-    reached_states = set()
 
-    def simulate_step(current_state, current_n, visited_states):
-        if current_n == 0:
-            return
-        # action space: 0, 1, 2, 3, 4, 5
-        for action in range(env.action_space.n):
-            transitions = env.P[current_state][action]
-            # env.P[state][action] = [(probabilidad, estado futuro, recompensa, done), ...]
-            for prob, future_state, _, _ in transitions:
-                if prob > 0 and future_state not in visited_states:
-                    # Añadir el estado futuro a los estados alcanzables solo si no se ha visitado antes
-                    reached_states.add(future_state)
-                    visited_states.add(future_state)
-                    # Llamada recursiva para simular el siguiente paso
-                    simulate_step(future_state, current_n - 1, visited_states)
-
-    simulate_step(state, n, visited_states={state})  # Inicializamos con el estado actual ya visitado
-    return reached_states
-
-def calculate_empowerment_n_steps(env, state, n):
+def filter_invalid_actions_by_position(y,x):
     """
-    Calcula el empowerment a n pasos como el logaritmo del número de estados únicos alcanzables.
-    params:
-        env: entorno de Gym
-        state: estado inicial
-        n: número de pasos
+    Filtra las acciones inválidas basadas en la posición del taxi en el mapa.
+    :param x: Columna actual del taxi.
+    :param y: Fila actual del taxi.
+    :return: Lista de acciones válidas.
     """
-    # Estados alcanzables a n pasos (sin repetidos)
-    reached_states = simulate_n_step_transitions(env, state, n)
-    num_states_reached = len(reached_states)
+    # Mapa de acciones: 0: Sur, 1: Norte, 2: Este, 3: Oeste
+    valid_actions = [0, 1, 2, 3, 4, 5]  # Acciones: Sur, Norte, Este, Oeste, Recoger, Dejar
+
+    # Limitar movimiento según las coordenadas y las paredes
+    if y == 0:  # Borde superior
+        valid_actions.remove(1)  # No puede moverse al norte
+    if y == 4:  # Borde inferior
+        valid_actions.remove(0)  # No puede moverse al sur
+    if x == 0:  # Borde izquierdo
+        valid_actions.remove(3)  # No puede moverse al oeste
+    if x == 4:  # Borde derecho
+        valid_actions.remove(2)  # No puede moverse al este
+
+    # Paredes adicionales según el entorno de Taxi
+    if (x == 2 and y == 0) or (x == 2 and y == 1) or (x == 1 and y == 3) or (x == 1 and y == 4) or (x == 3 and y == 3) or (x == 3 and y == 4):
+        valid_actions.remove(3)  # No puede moverse al oeste en esas posiciones
+    if (x == 1 and y == 0) or (x == 1 and y == 1) or (x == 2 and y == 3) or (x == 2 and y == 4) or (x == 0 and y == 3) or (x == 0 and y == 4):
+        valid_actions.remove(2)  # No puede moverse al este
+
+    return valid_actions
+
+def calculate_marginal_distributions(env, state):
+    """
+    Calcula las distribuciones marginales P(future_state|state) y P(action|state).
     
-    if num_states_reached > 0:
-        empowerment = np.log2(num_states_reached)
-    else:
-        empowerment = 0
+    :param env
+    :param state
+    :return: Distribuciones marginales.
+    """
+    transition_slice = env.P[state]  # Transiciones para el estado actual
+    taxi_row, taxi_col, _, _ = env.unwrapped.decode(state)  # Decodificar la posición actual del taxi
+    valid_actions = filter_invalid_actions_by_position(taxi_row, taxi_col)  # Acciones válidas
+    
+    # Inicializar distribuciones marginales
+    marginal_action = np.zeros(env.action_space.n)  # P(action|state)
+    marginal_future_state = np.zeros(env.observation_space.n)  # P(future_state|state)
+    
+    # Recorre cada acción válida
+    for action in valid_actions:
+        transitions = transition_slice[action]
+        # Total probabilidad de la acción
+        total_prob_action = sum([prob for prob, _, _, _ in transitions])
+        marginal_action[action] = total_prob_action
+        
+        # Sumar las probabilidades de los futuros estados
+        for prob, future_state, _, _ in transitions:
+            marginal_future_state[future_state] += prob
+
+    return marginal_action, marginal_future_state
+
+
+def calculate_empowerment(env, state, epsilon=1e-10):
+    """
+    Calcula el empoderamiento utilizando las distribuciones marginales.
+    
+    :param env
+    :param state
+    :param epsilon
+    :return: Empowerment.
+    """
+    empowerment = 0.0
+    
+    # Obtener las distribuciones marginales
+    marginal_action, marginal_future_state = calculate_marginal_distributions(env, state)
+    
+    for action in range(env.action_space.n):
+        if marginal_action[action] == 0:  # Acción inválida, saltarla
+            continue
+
+        for future_state in range(env.observation_space.n):
+            prob_action = marginal_action[action]
+            prob_future = marginal_future_state[future_state]
+
+            if prob_action > epsilon and prob_future > epsilon:
+                empowerment += prob_action * prob_future * np.log2(prob_future / prob_action)
 
     return empowerment
 
@@ -84,16 +122,17 @@ def get_destination_coords(destination):
         print(f"Error: destino desconocido {destination}.")
         return None
 
+
 # Cargar Q-Table
 def load_qtable(filename):
     if os.path.exists(filename):
         try:
-            return np.load(filename, allow_pickle=True)
+            return np.load(filename)  # Cargar Q-table existente
         except EOFError:
             print("El archivo de la Q-table está vacío o corrupto, inicializando nueva Q-table.")
-            return np.zeros((500, 6)) 
+            return np.zeros((500, 6))  # Nueva Q-table si el archivo está dañado
     else:
-        return np.zeros((500, 6))
+        return np.zeros((500, 6))  # Nueva Q-table si no existe el archivo
 
 # Guardar Q-Table
 def save_qtable(qtable, filename):
@@ -105,16 +144,16 @@ def main():
     env = gym.make('Taxi-v3', render_mode='human')
     qtable_filename = "qtable_instance_1.npy"
     qtable = load_qtable(qtable_filename)
-    state_counts = np.zeros(env.observation_space.n)
+    state_counts= np.zeros(env.observation_space.n)
     transition_counts = np.zeros((env.observation_space.n, env.action_space.n, env.observation_space.n))
 
     learning_rate = 0.05
     discount_rate = 0.95
     num_episodes = 3
-    max_steps = 1000
-    epsilon = 0.9
+    max_steps = 100
+    epsilon = 0.9  # Inicialmente alta para mayor exploración
     min_epsilon = 0.01
-    decay_rate = 0.99 
+    decay_rate = 0.99  # Tasa de decaimiento de epsilon
 
     start_time = time.time()  
     successful_deliveries = 0 
@@ -127,7 +166,7 @@ def main():
         taxi_row, taxi_col, passenger, destination = env.unwrapped.decode(state)
     
         print(f"Episodio: {episode}, Estado inicial: ({taxi_row}, {taxi_col}), Pasajero: {passenger}, Destino: {destination},")
-        
+
         for step in range(max_steps):
             if np.random.uniform(0, 1) < epsilon:
                 action = env.action_space.sample()
@@ -137,7 +176,7 @@ def main():
             new_state, reward, done, truncated, info = env.step(action)
 
             taxi_row, taxi_col, passenger, destination = env.unwrapped.decode(new_state)
-            empowerment = calculate_empowerment_n_steps(env, new_state, n=5)
+            empowerment = calculate_empowerment(env, state, epsilon=1e-10)
         
             print(f"Paso: {step}, Acción: {actions[action]}, Nuevo estado: ({taxi_row}, {taxi_col}), Pasajero: {passenger}, Destino: {destination}, Empowerment: {empowerment}")
             
