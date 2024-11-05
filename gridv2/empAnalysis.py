@@ -26,34 +26,50 @@ class EmpowermentAnalysis:
         max_saturation_step = None
         max_growth = -np.inf
         threshold = 0.01  # Define el umbral para considerar que el empowerment dejó de crecer significativamente
+        consecutive_steps = 0
+        saturation_steps_threshold = 5  # Número de pasos consecutivos sin cambios significativos para considerar saturación
 
-        for step in range(1, len(self.empowerment_growth)):
-            diff = np.abs(self.empowerment_growth[step + 1] - self.empowerment_growth[step])
-            avg_diff = np.mean(diff)
+        # Para guardar los pasos y el empowerment máximo en cada paso
+        with open("empowerment_analysis.txt", "w") as file:
+            file.write("Paso\tEmpowerment Máximo\n")
 
-            # Detectar el paso con el crecimiento más significativo
-            if avg_diff > max_growth:
-                max_growth = avg_diff
-                max_growth_step = step
+            for step in range(1, len(self.empowerment_growth)):
+                # Calcular el empowerment máximo en lugar del promedio
+                max_empowerment_step = np.max(self.empowerment_growth[step])
+                max_empowerment_next = np.max(self.empowerment_growth[step + 1])
+                diff = np.abs(max_empowerment_next - max_empowerment_step)
+                
+                # Escribir en el archivo
+                file.write(f"{step}\t{max_empowerment_step}\n")
 
-            # Detectar el paso donde la diferencia cae por debajo del umbral
-            if avg_diff < threshold and max_saturation_step is None:
-                max_saturation_step = step
+                # Detectar el paso con el crecimiento más significativo
+                if diff > max_growth:
+                    max_growth = diff
+                    max_growth_step = step
+
+                # Contar pasos consecutivos con cambios menores al umbral
+                if diff < threshold:
+                    consecutive_steps += 1
+                    if consecutive_steps >= saturation_steps_threshold and max_saturation_step is None:
+                        max_saturation_step = step - saturation_steps_threshold + 1
+                else:
+                    consecutive_steps = 0  # Reiniciar si el cambio es mayor al umbral
 
         print(f"El empowerment alcanza la saturación aproximadamente en el paso: {max_saturation_step}")
         print(f"El mayor crecimiento en empowerment ocurre en el paso: {max_growth_step}")
         
         return max_growth_step, max_saturation_step
 
+
     def plot_empowerment_growth(self):
         """Grafica el crecimiento de empowerment y marca los puntos de mayor crecimiento y saturación."""
         max_growth_step, max_saturation_step = self.analyze_empowerment_growth()
 
         steps = list(self.empowerment_growth.keys())
-        avg_empowerment = [np.mean(self.empowerment_growth[step]) for step in steps]
+        max_empowerment = [np.max(self.empowerment_growth[step]) for step in steps]
 
         plt.figure(figsize=(10, 6))
-        plt.plot(steps, avg_empowerment, marker='o', label="Empowerment promedio")
+        plt.plot(steps, max_empowerment, marker='o', label="Empowerment máximo")
 
         # Marcar el punto de mayor crecimiento
         if max_growth_step:
@@ -64,7 +80,7 @@ class EmpowermentAnalysis:
             plt.axvline(x=max_saturation_step, color='g', linestyle='--', label=f"Saturación en paso {max_saturation_step}")
 
         plt.xlabel("Número de pasos")
-        plt.ylabel("Empowerment promedio")
+        plt.ylabel("Empowerment máximo")
         plt.title("Crecimiento del Empowerment a través de los pasos")
         plt.legend()
         plt.grid()
@@ -77,6 +93,6 @@ if __name__ == "__main__":
     env.reset()
 
     # Crear el análisis de empowerment
-    analysis = EmpowermentAnalysis(env, max_steps=100)
+    analysis = EmpowermentAnalysis(env, max_steps=200)
     analysis.calculate_empowerment_across_steps()
     analysis.plot_empowerment_growth()

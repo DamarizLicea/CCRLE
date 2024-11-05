@@ -72,7 +72,7 @@ class SimpleEnv(MiniGridEnv):
         for pos in self.reward_positions:
             self.put_obj(Goal(), *pos)
 
-    def calculate_empowerment_matrix(self, n_steps=10):
+    def calculate_empowerment_matrix(self, n_steps=2):
         """ Calcula el empowerment para cada celda accesible, incluyendo pasillos."""
         for row in range(1, self.grid.height - 1):
             for col in range(1, self.grid.width - 1):
@@ -82,7 +82,7 @@ class SimpleEnv(MiniGridEnv):
                     self.empowerment_matrix[row, col] = self.calculate_empowerment(col, row, n_steps)
 
 
-    def calculate_empowerment(self, x, y, n_steps=10):
+    def calculate_empowerment(self, x, y, n_steps=2):
         """Calcula el empowerment para una celda dada en (x, y), incluyendo celdas de pasillo."""
         reachable_states = set()
 
@@ -159,7 +159,7 @@ class SimpleEnv(MiniGridEnv):
             for state, actions in self.q_table.items():
                 file.write(f"State {state}: {actions}\n")
 
-    def q_learning_agent(self, alpha=0.1, gamma=0.9, epsilon=1.0, min_epsilon=0.01, decay_rate=0.995, max_steps=150, episodes=1000):
+    def q_learning_agent(self, alpha=0.1, gamma=0.9, epsilon=1.0, min_epsilon=0.01, decay_rate=0.995, max_steps=150, episodes=10):
         """Agente que aprende con Q-learning y reinicia episodios tras completar 4 recompensas."""
         for episode in range(episodes):
             current_pos = self.agent_start_pos
