@@ -4,13 +4,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class EmpowermentAnalysis:
-    def __init__(self, env, max_steps=20):
+    def __init__(self, env, max_steps=90):
         self.env = env
         self.max_steps = max_steps
         self.empowerment_growth = {}
 
     def calculate_empowerment_across_steps(self):
-        """Calcula el empowerment en cada celda accesible para múltiples pasos hasta max_steps."""
+        """Función que calcula el empowerment en cada celda 
+            accesible para múltiples pasos a futuro, hasta max_steps."""
         self.empowerment_growth = {step: np.full_like(self.env.empowerment_matrix, -1, dtype=float) for step in range(1, self.max_steps + 1)}
         
         for step in range(1, self.max_steps + 1):
@@ -21,39 +22,35 @@ class EmpowermentAnalysis:
                         self.empowerment_growth[step][row, col] = self.env.calculate_empowerment(col, row, n_steps=step)
 
     def analyze_empowerment_growth(self):
-        """Analiza el crecimiento del empowerment para encontrar el punto de saturación y el mayor incremento."""
+        """ Función que analiza el crecimiento del empowerment para encontrar el punto de 
+            saturación y el mayor incremento del empowerment hasta max_steps."""
         max_growth_step = None
         max_saturation_step = None
         max_growth = -np.inf
-        threshold = 0.01  # Define el umbral para considerar que el empowerment dejó de crecer significativamente
+        threshold = 0.01  # Umbral para detectar falta de crecimiento en empowerment
         consecutive_steps = 0
-        saturation_steps_threshold = 5  # Número de pasos consecutivos sin cambios significativos para considerar saturación
+        saturation_steps_threshold = 5  # Pasos consecutivos sin cambios para marcar punto de saturación
 
-        # Para guardar los pasos y el empowerment máximo en cada paso
         with open("empowerment_analysis.txt", "w") as file:
             file.write("Paso\tEmpowerment Máximo\n")
 
             for step in range(1, len(self.empowerment_growth)):
-                # Calcular el empowerment máximo en lugar del promedio
                 max_empowerment_step = np.max(self.empowerment_growth[step])
                 max_empowerment_next = np.max(self.empowerment_growth[step + 1])
                 diff = np.abs(max_empowerment_next - max_empowerment_step)
                 
-                # Escribir en el archivo
                 file.write(f"{step}\t{max_empowerment_step}\n")
 
-                # Detectar el paso con el crecimiento más significativo
                 if diff > max_growth:
                     max_growth = diff
                     max_growth_step = step
 
-                # Contar pasos consecutivos con cambios menores al umbral
                 if diff < threshold:
                     consecutive_steps += 1
                     if consecutive_steps >= saturation_steps_threshold and max_saturation_step is None:
                         max_saturation_step = step - saturation_steps_threshold + 1
                 else:
-                    consecutive_steps = 0  # Reiniciar si el cambio es mayor al umbral
+                    consecutive_steps = 0 
 
         print(f"El empowerment alcanza la saturación aproximadamente en el paso: {max_saturation_step}")
         print(f"El mayor crecimiento en empowerment ocurre en el paso: {max_growth_step}")
@@ -62,7 +59,7 @@ class EmpowermentAnalysis:
 
 
     def plot_empowerment_growth(self):
-        """Grafica el crecimiento de empowerment y marca los puntos de mayor crecimiento y saturación."""
+        """Función para graficar el crecimiento de empowerment y marca los puntos de interes."""
         max_growth_step, max_saturation_step = self.analyze_empowerment_growth()
 
         steps = list(self.empowerment_growth.keys())
@@ -71,11 +68,11 @@ class EmpowermentAnalysis:
         plt.figure(figsize=(10, 6))
         plt.plot(steps, max_empowerment, marker='o', label="Empowerment máximo")
 
-        # Marcar el punto de mayor crecimiento
+        # Punto de mayor crecimiento
         if max_growth_step:
             plt.axvline(x=max_growth_step, color='r', linestyle='--', label=f"Mayor crecimiento en paso {max_growth_step}")
 
-        # Marcar el punto de saturación
+        # Punto de saturación
         if max_saturation_step:
             plt.axvline(x=max_saturation_step, color='g', linestyle='--', label=f"Saturación en paso {max_saturation_step}")
 
@@ -88,11 +85,8 @@ class EmpowermentAnalysis:
 
 
 if __name__ == "__main__":
-    # Crear el entorno de SimpleEnv
     env = SimpleEnv(render_mode="human")
     env.reset()
-
-    # Crear el análisis de empowerment
-    analysis = EmpowermentAnalysis(env, max_steps=200)
+    analysis = EmpowermentAnalysis(env, max_steps=21)
     analysis.calculate_empowerment_across_steps()
     analysis.plot_empowerment_growth()
