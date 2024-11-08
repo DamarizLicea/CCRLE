@@ -8,12 +8,6 @@ import numpy as np
 import random
 import time
 
-class PassableWall(Wall):
-    """ Subclase de Wall que permite que el agente pueda pasar sobre ella. 
-        Tambien se le puede decir pasillo"""
-    def can_overlap(self):
-        return True
-
 
 class SimpleEnv(MiniGridEnv):
     """ Clase que importa MiniGridEnv (EmptyEnv)
@@ -53,12 +47,6 @@ class SimpleEnv(MiniGridEnv):
         self.grid = Grid(width, height)
         self.grid.wall_rect(0, 0, width, height)
 
-        # Colocar pasillos
-        for i in range(1, height - 1):
-            self.grid.set(6, i, PassableWall())
-        for i in range(1, width - 1):
-            self.grid.set(i, 6, PassableWall())
-
         self.current_quadrant = random.choice(self.quadrants)
         self.place_rewards_in_quadrant()
 
@@ -82,43 +70,42 @@ class SimpleEnv(MiniGridEnv):
         for pos in self.reward_positions:
             self.put_obj(Goal(), *pos)
 
-    def calculate_empowerment_matrix(self, n_steps=10):
-        """ Función que utiliza calculate_empowerment para llenar una 
-            matriz para todas las celdas accesibles en el entorno."""
-        for row in range(1, self.grid.height - 1):
-            for col in range(1, self.grid.width - 1):
-                cell = self.grid.get(col, row)
-                # Solo omitir celdas de Wall
-                if not isinstance(cell, Wall) or isinstance(cell, PassableWall):
-                    self.empowerment_matrix[row, col] = self.calculate_empowerment(col, row, n_steps)
+    def filter_actions(self, x, y):
+            """ Devuelve una lista de acciones válidas según la posición del agente """
+            valid_actions = []
+            if y > 1:  # Puede ir arriba
+                valid_actions.append((0, 1))
+            if y < self.grid.height - 2:  # Puede ir abajo
+                valid_actions.append((0, -1))
+            if x > 1:  # Puede ir izquierda
+                valid_actions.append((-1, 0))
+            if x < self.grid.width - 2:  # Puede ir derecha
+                valid_actions.append((1, 0))
+            return valid_actions
 
+    def calculate_empowerment(self, x, y, n_steps=5):
+            """ Calcula el empowerment de una celda al contar las celdas alcanzables en n pasos. """
+            reachable_states = set()
 
-    def calculate_empowerment(self, x, y, n_steps=10):
-        """ Función que calcula el empowerment de una celda dada, al calcular
-            el logaritmo del número de celdas alcanzables con n pasos."""
-        reachable_states = set()
+            def explore_positions(pos, steps):
+                if steps == 0:
+                    return
+                for direction in self.filter_actions(*pos):  # Solo movimientos válidos
+                    new_x, new_y = pos[0] + direction[0], pos[1] + direction[1]
+                    if (new_x, new_y) not in reachable_states:
+                        reachable_states.add((new_x, new_y))
+                        explore_positions((new_x, new_y), steps - 1)
 
-        def explore_positions(pos, steps):
-            if steps == 0:
-                return
-            for direction in [(0, 1), (1, 0), (0, -1), (-1, 0)]:  # Movimientos: derecha, abajo, izquierda, arriba
-                new_x, new_y = pos[0] + direction[0], pos[1] + direction[1]
+            explore_positions((x, y), n_steps)
+            empowerment_value = np.log2(len(reachable_states))
+            return empowerment_value
 
-                if 0 <= new_x < self.grid.width and 0 <= new_y < self.grid.height:
-                    cell = self.grid.get(new_x, new_y)
-                    if not isinstance(cell, Wall) or isinstance(cell, PassableWall):
-                        if (new_x, new_y) not in reachable_states:
-                            reachable_states.add((new_x, new_y))
-                            explore_positions((new_x, new_y), steps - 1)
-        
-        explore_positions((x, y), n_steps)
-
-        empowerment_value = np.log2(len(reachable_states))
-        
-        return empowerment_value
-
-
-
+    def calculate_empowerment_matrix(self, n_steps=5):
+            for row in range(1, self.grid.height - 1):
+                for col in range(1, self.grid.width - 1):
+                    cell = self.grid.get(col, row)
+                    if not isinstance(cell, Wall):
+                        self.empowerment_matrix[row, col] = self.calculate_empowerment(col, row, n_steps)
     def find_max_empowerment_position(self):
         """ Función que encuentra la posición con el máximo valor de empowerment en el tablero. """
         max_empowerment = -1
@@ -130,9 +117,10 @@ class SimpleEnv(MiniGridEnv):
                 if empowerment_value > max_empowerment:
                     max_empowerment = empowerment_value
                     max_pos = (col, row)
-        
+
         print(f"Posición de máximo empowerment: {max_pos} con un valor de {max_empowerment}")
         return max_pos
+
 
     def save_empowerment_matrix(self, filename="empowerment_matrix.txt"):
         """ Función que guarda la matriz de empowerment en un archivo de texto """
@@ -258,7 +246,7 @@ class SimpleEnv(MiniGridEnv):
         new_x, new_y = pos[0] + direction[0], pos[1] + direction[1]
         
         if 0 <= new_x < self.grid.width and 0 <= new_y < self.grid.height:
-            if not isinstance(self.grid.get(new_x, new_y), Wall) or isinstance(self.grid.get(new_x, new_y), PassableWall):
+            if not isinstance(self.grid.get(new_x, new_y), Wall):
                 return new_x, new_y
         
         return pos
