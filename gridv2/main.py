@@ -82,7 +82,7 @@ class SimpleEnv(MiniGridEnv):
         for pos in self.reward_positions:
             self.put_obj(Goal(), *pos)
 
-    def calculate_empowerment_matrix(self, n_steps=13):
+    def calculate_empowerment_matrix(self, n_steps=10):
         """ Función que utiliza calculate_empowerment para llenar una 
             matriz para todas las celdas accesibles en el entorno."""
         for row in range(1, self.grid.height - 1):
@@ -93,7 +93,7 @@ class SimpleEnv(MiniGridEnv):
                     self.empowerment_matrix[row, col] = self.calculate_empowerment(col, row, n_steps)
 
 
-    def calculate_empowerment(self, x, y, n_steps=2):
+    def calculate_empowerment(self, x, y, n_steps=10):
         """ Función que calcula el empowerment de una celda dada, al calcular
             el logaritmo del número de celdas alcanzables con n pasos."""
         reachable_states = set()
@@ -112,12 +112,8 @@ class SimpleEnv(MiniGridEnv):
                             explore_positions((new_x, new_y), steps - 1)
         
         explore_positions((x, y), n_steps)
-        
-        # Considerar recompensas
-        if (x, y) in self.reward_positions:
-            empowerment_value = np.log2(len(reachable_states)) + 2 # Es recompensa, bonus.
-        else:
-            empowerment_value = np.log2(len(reachable_states))
+
+        empowerment_value = np.log2(len(reachable_states))
         
         return empowerment_value
 
@@ -178,7 +174,7 @@ class SimpleEnv(MiniGridEnv):
             for state, actions in self.q_table.items():
                 file.write(f"State {state}: {actions}\n")
 
-    def q_learning_agent(self, alpha=0.5, gamma=0.9, epsilon=0.9, min_epsilon=0.01, decay_rate=0.99, max_steps=90, episodes=1000):
+    def q_learning_agent(self, alpha=0.5, gamma=0.9, epsilon=0.9, min_epsilon=0.01, decay_rate=0.99, max_steps=90, episodes=1):
             """ Función para representar al segundo agente, que usa reinforcement learning
                 mediante Q-Learning, el objetivo de este agente es recolectar las recompensas
                 en el menor numero de pasos posibles. """
