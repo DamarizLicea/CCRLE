@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 from minigrid.core.grid import Grid
 from minigrid.core.mission import MissionSpace
@@ -12,7 +13,7 @@ import time
 class SimpleEnv(MiniGridEnv):
     """ Clase que importa MiniGridEnv (EmptyEnv)
         para generar el entorno."""
-    def __init__(self, size=13, agent_start_pos=(6, 6), agent_start_dir=0, num_pasos = 8 , max_steps: int | None = None, **kwargs):
+    def __init__(self, size=13, agent_start_pos=(2, 2), agent_start_dir=0, num_pasos = 6, max_steps: int | None = None, **kwargs):
         """ Constructor de la clase que setea los parametros
             para un entorno de 13 x 13 con un agente en la posición (6, 6) y
             donde la dirección del agente se bloquea a 0"""
@@ -155,100 +156,152 @@ class SimpleEnv(MiniGridEnv):
         self.render()
 
     # ------------------ Q-learning ------------------ #
-    def initialize_q_table(self):
-        """ Función para inicializar la Q-table con todas las combinaciones posibles de estado."""
-        self.q_table = {}
-        for row in range(1, self.grid.height - 1):
-            for col in range(1, self.grid.width - 1):
-                for quadrant_index in range(len(self.quadrants)):
-                    # Codificamos el estado con el cuadrante de recompensa
-                    state = (col * 100 + row) + quadrant_index
-                    self.q_table[state] = {0: 0, 1: 0, 2: 0, 3: 0}
+                    # acciones: 0 = abajo, 1 = derecha, 2 = arriba, 3 = izquierda
+                    # 3 puede ser izquierda
+                    # 0 puede ser abajo
+                    # 2 puede ser arriba
+                    # 1 puede ser derecha
+                    # desde la posicion (5,6) (y,x) se puede ir a (5,5), (6,6), (5,7), (4,6)
 
-    def save_q_table(self, filename="q_table.txt"):
+
+    def save_q_table(self, filename="q_table_empql2.txt"):
         """ Función para guardar la Q-table en un archivo de texto."""
         with open(filename, "w") as file:
             for state, actions in self.q_table.items():
                 file.write(f"State {state}: {actions}\n")
 
-    def q_learning_agent(self, alpha=0.5, gamma=0.9, epsilon=0.9, min_epsilon=0.01, decay_rate=0.99, max_steps=70, episodes=1000):
-            """ Función para representar al segundo agente, que usa reinforcement learning
-                mediante Q-Learning, el objetivo de este agente es recolectar las recompensas
-                en el menor numero de pasos posibles. """
+    def get_state_value(self, state):
+        """Función auxiliar para obtener o crear valores para un estado."""
+        if state not in self.q_table:
+            self.q_table[state] = {}
+            # Decode posición x,y del estado
+            x = (state - (state % 4)) // 100
+            y = (state - (state % 4)) % 100
+        
+            for action in range(4):
+                next_pos = self.next_position((x, y), action)
+                if 0 <= next_pos[0] < self.grid.width and 0 <= next_pos[1] < self.grid.height:
+                    emp_value = self.empowerment_grid[next_pos[1], next_pos[0]]
+                else:
+                    emp_value = 0
+                self.q_table[state][action] = random.uniform(0, 0.1)
+        return self.q_table[state]
+
+    def initialize_q_table(self):
+        """Inicialización de la Q-table con valores aleatorios pequeños."""
+        self.q_table = {}
+        
+        # Para cada posición válida en el grid
+        for row in range(self.grid.height):
+            for col in range(self.grid.width):
+                for quadrant_index in range(len(self.quadrants)):
+                    state = (col * 100 + row) + quadrant_index
+                    self.q_table[state] = {
+                        action: random.uniform(0, 0.1) for action in range(4)
+                    }
+
+    def next_position(self, pos, action):
+        """Función que calcula la siguiente posición basada en la acción."""
+        direction = [(0, 1), (1, 0), (0, -1), (-1, 0)][action]
+        new_x, new_y = pos[0] + direction[0], pos[1] + direction[1]
+        
+        # Verificar límites y paredes
+        if (0 <= new_x < self.grid.width and 
+            0 <= new_y < self.grid.height and 
+            not isinstance(self.grid.get(new_x, new_y), Wall)):
+            return new_x, new_y
+        return pos
+
+    def q_learning_agent(self, alpha=0.1, gamma=0.9, epsilon=1.0, min_epsilon=0.01, decay_rate=0.995, max_steps=70, episodes=1500):
+        """Q-Learning modificado para mejor exploración y aprendizaje."""
+        min_steps_to_goal = float('inf')
+        best_episode = None
+        successful_episodes = 0
+        episode_rewards = []
+        
+        # Inicializar la Q-table
+        self.initialize_q_table()
+        
+        for episode in range(episodes):
+            current_pos = self.agent_start_pos
+            steps = 0
+            rewards_collected = 0
+            episode_reward = 0
             
-            min_steps_to_goal = float('inf')
-            best_episode = None
-            successful_episodes = 0
+            self._gen_grid(self.grid.width, self.grid.height)
+            current_quadrant = self.quadrants.index(self.current_quadrant)
+            print(f"\nIniciando episodio {episode + 1}")
+            
+            while steps < max_steps:
+                state = self.encode_state(*current_pos) + current_quadrant
+                
+                # Exploración vs. Explotación
+                if random.uniform(0, 1) < epsilon:
+                    action = random.randint(0, 3)
+                else:
+                    state_values = self.get_state_value(state)
+                    action = max(state_values, key=state_values.get)
+                
+                new_pos = self.next_position(current_pos, action)
+                new_state = self.encode_state(*new_pos) + current_quadrant
+                
+                reward = -0.1  # Penalización por paso
+                
+                # Bonus de empowerment si la posición es válida
+                if 0 <= new_pos[1] < self.grid.height and 0 <= new_pos[0] < self.grid.width:
+                    emp_reward = self.empowerment_grid[new_pos[1], new_pos[0]] 
+                
+                # Recompensa por encontrar objetivo
+                if new_pos in self.reward_positions:
+                    reward += 10
+                    rewards_collected += 1
+                    self.reward_positions.remove(new_pos)
+                    self.grid.set(*new_pos, None)
+                    print(f"Recompensa encontrada en posición {new_pos}. Total: {rewards_collected}")
+                
+                # Recompensa por completar la tarea
+                if rewards_collected == 4:
+                    reward += 50
+                    successful_episodes += 1
+                    print(f"Episodio {episode + 1} completado en {steps + 1} pasos")
+                    if steps + 1 < min_steps_to_goal:
+                        min_steps_to_goal = steps + 1
+                        best_episode = episode + 1
+                    break
+                
+                # Actualización Q-learning
+                next_state_values = self.get_state_value(new_state)
+                max_next_q = max(next_state_values.values())
+                current_q = self.q_table[state].get(action, 0)
+                
+                # Fórmula Q-learning
+                new_q = current_q + alpha * (emp_reward + gamma * max_next_q - current_q)
+                self.q_table[state][action] = new_q
 
-            for episode in range(episodes):
-                current_pos = self.agent_start_pos
-                steps = 0
-                rewards_collected = 0
-                total_reward = 0 
-
-                self._gen_grid(self.grid.width, self.grid.height)
-                current_quadrant= self.quadrants.index(self.current_quadrant)
-                print(f"\nIniciando episodio {episode + 1}")
-
-                while steps < max_steps:
-                    state = self.encode_state(*current_pos)+current_quadrant
-
-                    if state not in self.q_table:
-                        self.q_table[state] = {0: 0, 1: 0, 2: 0, 3: 0}
-
-                    # Exploración o explotación
-                    if random.uniform(0, 1) < epsilon:
-                        action = random.choice(list(self.q_table[state].keys()))  # Exploración
-                    else:
-                        action = max(self.q_table[state], key=self.q_table[state].get)  # Explotación
-
-                    new_pos = self.next_position(current_pos, action)
-                    new_state = self.encode_state(*new_pos) + current_quadrant
-
-                    if new_state not in self.q_table:
-                        self.q_table[new_state] = {0: 0, 1: 0, 2: 0, 3: 0}
-
-                    reward = -1
-
-                    if new_pos in self.reward_positions:
-                        reward += 1 
-                        rewards_collected += 1
-                        self.reward_positions.remove(new_pos)
-                        self.grid.set(*new_pos, None)
-                        print(f"Recompensa encontrada en posición {new_pos}. Total: {rewards_collected}")
-                        self.render()
-
-                        if rewards_collected == 4:
-                            reward += 10
-                            successful_episodes += 1 
-                            total_reward += reward
-                            print(f"Episodio {episode + 1} completado en {steps + 1} pasos con una recompensa total de {total_reward}")
-
-                            if steps + 1 < min_steps_to_goal:
-                                min_steps_to_goal = steps + 1
-                                best_episode = episode + 1
-                            break
-
-                    total_reward += reward
-
-                    self.q_table[state][action] += alpha * (reward + gamma * max(self.q_table[new_state].values()) - self.q_table[state][action])
-                    current_pos = new_pos
-                    self.agent_pos = current_pos
-                    epsilon = max(min_epsilon, epsilon * decay_rate)
-
-                    self.render()
-                    steps += 1
-                    if steps >= max_steps:
-                        print(f"Límite de pasos alcanzado en el episodio {episode + 1}. Recompensa total: {total_reward}")
-                        break
-
-            # Outputs de resumen de episodios
-            print(f"\nEntrenamiento completado con {successful_episodes} episodios exitosos de {episodes}")
-            if best_episode is not None:
-                print(f"Mejor episodio: {best_episode} con {min_steps_to_goal} pasos.")
-            else:
-                print("No se lograron recoger las 4 recompensas en ningún episodio.")
-            self.save_q_table()
+                current_pos = new_pos
+                self.agent_pos = current_pos
+                episode_reward += reward
+                
+                self.render()
+                time.sleep(0.1)
+                steps += 1
+                
+                if steps >= max_steps:
+                    print(f"Límite de pasos alcanzado en episodio {episode + 1}")
+            
+            epsilon = max(min_epsilon, epsilon * decay_rate)
+            episode_rewards.append(episode_reward)
+            
+            print(f"Episodio {episode + 1} terminado. Recompensa total: {episode_reward:.2f}")
+        
+        print(f"\nEntrenamiento completado con {successful_episodes} episodios exitosos de {episodes}")
+        if best_episode is not None:
+            print(f"Mejor episodio: {best_episode} con {min_steps_to_goal} pasos")
+        else:
+            print("No se lograron recoger las 4 recompensas en ningún episodio")
+        
+        self.save_q_table()
+        return episode_rewards
 
     def next_position(self, pos, action):
         """Función que calcula la siguiente posición basada en la acción."""
@@ -272,21 +325,14 @@ class SimpleEnv(MiniGridEnv):
         self.q_learning_agent()
 
 def main():
-    num_pasos = 5 
+    num_pasos = 6 
     env = SimpleEnv(render_mode="human", num_pasos=num_pasos)
-
-    env.run_agents() # Número de pasos para calcular el empowerment
+    env.run_agents()
     empowerment_grid = env.calculate_empowerment_matrix()
     env.save_empowerment_matrix()
 
-    plt.figure(figsize=(8, 8))
-    plt.imshow(empowerment_grid, cmap="viridis", origin="upper")
-    plt.colorbar(label="Empowerment")
-    plt.title(f"Heatmap de Empowerment en el Tablero a {num_pasos} Pasos")
-    plt.xlabel("Posición X")
-    plt.ylabel("Posición Y")
-    plt.show()
     env.close()
 
 if __name__ == "__main__":
     main()
+
