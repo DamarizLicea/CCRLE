@@ -8,11 +8,7 @@ import random
 import time
 
 
-class PassableWall(Wall):
-    """ Subclase de Wall que permite que el agente pueda pasar sobre ella. 
-        Tambien se le puede decir pasillo"""
-    def can_overlap(self):
-        return True
+
 class SimpleCrossEnv(MiniGridEnv):
     """ Clase que implementa un entorno en forma de cruz con cuadrantes de 4x4 y paredes sólidas alrededor."""
     def __init__(self, size=17, agent_start_pos=(8, 8), agent_start_dir=0, max_steps: int | None = None, **kwargs):
