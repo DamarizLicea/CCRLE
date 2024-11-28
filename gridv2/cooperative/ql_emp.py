@@ -71,11 +71,8 @@ class CombinedEnv(MiniGridEnv):
 
     def place_rewards_in_quadrant(self):
         x_center, y_center = self.current_quadrant
-
-        self.reward_positions = [
-            (x_center - 1, y_center - 1), (x_center - 1, y_center + 1),
-            (x_center + 1, y_center - 1), (x_center + 1, y_center + 1)
-        ]
+        # que solo me ponga una en el centro del cuadrante
+        self.reward_positions = self.quadrants.copy()
 
         for pos in self.reward_positions:
             self.put_obj(Goal(), *pos)
@@ -90,6 +87,7 @@ class CombinedEnv(MiniGridEnv):
 
     def get_reachable_states(self, start_x, start_y, steps=1):
         """ Obtiene los estados alcanzables desde una posición inicial en un número de pasos dado. """
+
         moves = [(0, 1), (0, -1), (1, 0), (-1, 0)]
         reachable_states = set()
         
@@ -344,7 +342,7 @@ class CombinedEnv(MiniGridEnv):
                     self.rl_agent_start_pos = self.current_agent_pos
                     success = self.q_rl_agent(episodes=1, max_steps=100)
                     self.current_agent_pos = self.agent_pos
-                    if self.remaining_rewards == 0 or self.collected_rewards == 4 or success == 4:  
+                    if self.remaining_rewards == 0 or self.collected_rewards == 4 or success == 2:  
                         current_agent = 'emp'
                         print("Cambio de agente a Empowerment.")
                 else:

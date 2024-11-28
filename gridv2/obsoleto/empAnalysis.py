@@ -1,6 +1,6 @@
 import os
 import json
-from main import SimpleEnv
+from gridv2.inicios.main import SimpleEnv
 from minigrid.core.world_object import Goal, Wall
 import numpy as np
 import matplotlib.pyplot as plt

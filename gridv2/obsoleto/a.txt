@@ -1,11 +1,4 @@
                 Q_Emp                                                                                Q_RL
 Estado 1 (1,1)  {0: 0.42479275134435857, 1: 0.4700439718141092, 2: 0, 3: 0.9252759262536046}      {0: -0.5, 1: -0.5, 2: -1.1, 3: -1.0875}
+(110,True)        
 
-
-Para llrnar la qtable comparativa, necesito encontrar los 4 estados donde el agente q_rl_agent se 
-encuentra  en la misma posicion que el agente q_emp_agent. Lo que significa que vamos a comparar
-por cada estado del q_emp_agent 4 estados del q_rl_agent.
-Esta qtable comparativa se puede llenar antes de la ejecucion de los agentes, no tiene que ir a la par.
-Y va a tomar los datos de las qtables : q_table.txt (agente q_rl_agent ) y q_table_empql2.txt (agente q_emp_agent).
-OJO, que no sobreescriba en las qtables q_table.txt y q_table_empql2.txt, sino que lo haga en results/qtable_comparative.txt
-"""
