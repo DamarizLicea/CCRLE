@@ -1,6 +1,7 @@
 from __future__ import annotations
 from minigrid.core.grid import Grid
 from minigrid.core.mission import MissionSpace
+from minigrid.core.constants import COLOR_NAMES, COLOR_TO_IDX, IDX_TO_COLOR
 from minigrid.core.world_object import Goal, Wall
 from minigrid.minigrid_env import MiniGridEnv
 import matplotlib.pyplot as plt
@@ -27,11 +28,12 @@ class CombinedEnv(MiniGridEnv):
         self.current_quadrant = None
         self.reward_positions = []
         self.grid_size = 13
-        self.total_episodes = 3
-        self.remaining_rewards = 4
+        self.total_episodes = 20
+        self.remaining_rewards = 1
         self.collected_rewards = 0
         self.successEP = False
         self.successE = False
+        self.current_agent = 'rl'
 
         if max_steps is None:
             max_steps = 4 * size**2
@@ -44,6 +46,7 @@ class CombinedEnv(MiniGridEnv):
             **kwargs,
         )
         self.empowerment_grid = np.full((size, size), -1)
+        self.reward_range = (0, 1)
         
         # Inicializar Q-tables separadas
         self.q_table_emp_agent = {}
@@ -69,18 +72,28 @@ class CombinedEnv(MiniGridEnv):
         self.render()
         time.sleep(2)
 
+    def put_ob_color(self, obj, x, y, color="green"):
+        """ Pone un objeto en una celda con un color específico. """
+        obj.color = COLOR_TO_IDX[color]
+        self.grid.set(x, y, obj)
+
+    def supervisor_decision(self):
+        """
+        Decide qué agente debe tomar el control según el estado actual del entorno.
+        """
+        if self.remaining_rewards > 0:
+            return 'rl'  # Agente Q_RL toma el control
+        else:
+            return 'emp'  # Agente Q_emp toma el control
+
     def place_rewards_in_quadrant(self):
         x_center, y_center = self.current_quadrant
-
-        self.reward_positions = [
-            (x_center - 1, y_center - 1), (x_center - 1, y_center + 1),
-            (x_center + 1, y_center - 1), (x_center + 1, y_center + 1)
-        ]
-
-        for pos in self.reward_positions:
-            self.put_obj(Goal(), *pos)
-        
-        self.remaining_rewards = len(self.reward_positions)
+        # que solo me ponga una en el centro del cuadrante
+        reward_color = 'grey' if self.current_agent == 'emp' else 'green'
+        self.reward_positions = [(x_center, y_center)]
+        rewar = Goal()
+        rewar.color = reward_color
+        self.put_obj(rewar, x_center, y_center)
 
     def clear_rewards(self):
         """ Elimina todas las recompensas del tablero. """
@@ -90,6 +103,7 @@ class CombinedEnv(MiniGridEnv):
 
     def get_reachable_states(self, start_x, start_y, steps=1):
         """ Obtiene los estados alcanzables desde una posición inicial en un número de pasos dado. """
+
         moves = [(0, 1), (0, -1), (1, 0), (-1, 0)]
         reachable_states = set()
         
@@ -134,12 +148,30 @@ class CombinedEnv(MiniGridEnv):
             for col in range(1, self.grid.width - 1):
                 for quadrant_index in range(len(self.quadrants)):
                     state = (col * 100 + row) + quadrant_index
-                    q_table[state] = {0: 0, 1: 0, 2: 0, 3: 0}
+                    q_table[state] = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1}
         
         if agent_num == 1:
             self.q_table_emp_agent = q_table
         else:
             self.q_table_rl_agent = q_table
+
+    def load_q_table(self, filename):
+        q_table = {}
+        if os.path.exists(filename):
+            with open(filename, "r") as file:
+                for line in file:
+                    parts = line.strip().split(": ")
+                    if len(parts) == 2:
+                        state, actions = parts
+                        state = int(state.split()[1])
+                        actions = eval(actions)
+                        q_table[state] = actions
+        return q_table
+
+    def save_q_table(self, q_table, filename):
+        with open(filename, "w") as file:
+            for state, actions in q_table.items():
+                file.write(f"State {state}: {actions}\n")
 
     def next_position(self, pos, action):
         """ Obtiene la siguiente posición en base a una acción dada. """
@@ -152,6 +184,20 @@ class CombinedEnv(MiniGridEnv):
         
         return pos
     
+    def get_state_value(self, state, agent='emp'):
+        """Obtiene el valor del estado de la Q-table del agente especificado."""
+        if agent == 'emp':
+            q_table = self.q_table_emp_agent
+        elif agent == 'rl':
+            q_table = self.q_table_rl_agent
+        else:
+            raise ValueError("El agente especificado debe ser 'emp' o 'rl'.")
+        
+        if state not in q_table:
+            q_table[state] = {action: random.uniform(0, 0.1) for action in range(4)}
+        
+        return q_table[state]
+    
     def reset_environment(self):
         """Resetea el ambiente para prepararlo para un nuevo turno"""
         self._gen_grid(self.grid.width, self.grid.height)
@@ -160,61 +206,52 @@ class CombinedEnv(MiniGridEnv):
         self.empowerment_grid = self.calculate_empowerment_matrix()
 
 
-    def q_emp_agent(self, alpha=0.1, gamma=0.9, epsilon=1.0, min_epsilon=0.01, decay_rate=0.995, max_steps=70, episodes=5):
+    def q_emp_agent(self, alpha=0.1, gamma=0.9, epsilon=1.0, min_epsilon=0.01, decay_rate=0.995, max_steps=120, episodes=5):
         """Entrena a un agente usando q-learning con empowerment como recompensa."""
         max_emp_pos = None
         successE = False
-
         max_emp = np.max(self.empowerment_grid)
+        self.current_agent = 'emp'
         max_emp_pos = np.where(self.empowerment_grid == max_emp)
-        
-        self.initialize_q_table(1)
-        # Estoy tratando de borrar las recompensas del tablero
-        orifinal_reward_positions = self.reward_positions.copy()
-        for new_pos in self.reward_positions:
-            self.reward_positions.remove(new_pos)
-            self.grid.set(*new_pos, None)
-            remaining_rewards = len(self.reward_positions)
-            # hastaa aquí
+        max_emp_pos = (max_emp_pos[0][0], max_emp_pos[1][0])
+        print(f"Posición de máximo empowerment: {max_emp_pos}")
+        print(f"Empowerment máximo: {max_emp}")
+        self.q_table_emp_agent = self.load_q_table("q_table_empql21.txt")
+        if not self.q_table_emp_agent:
+            self.initialize_q_table(1)
         for episode in range(episodes):
-                current_pos = self.emp_agent_start_pos
-                steps = 0
-                print(f"Recompensas en {self.reward_positions}")
-                print(f"Recompensas restantes: {self.remaining_rewards}")
-
-                self._gen_grid(self.grid.width, self.grid.height)
-                current_quadrant = self.quadrants.index(self.current_quadrant)
-                while steps < max_steps:
-                    state = self.encode_state(*current_pos) + current_quadrant
+            current_pos = self.emp_agent_start_pos
+            steps = 0
+            self._gen_grid(self.grid.width, self.grid.height)
+            current_quadrant = self.quadrants.index(self.current_quadrant)
+            print(f"Recompensas en {self.reward_positions}")
+            print(f"Recompensas restantes: {self.remaining_rewards}")
+            while steps < max_steps:
+                state = self.encode_state(*current_pos) + current_quadrant
                     
-                    if state not in self.q_table_emp_agent:
-                        self.q_table_emp_agent[state] = {0: 0, 1: 0, 2: 0, 3: 0}
+                if state not in self.q_table_emp_agent:
+                    self.q_table_emp_agent[state] = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1}
                     # Epsilon greedy
-                    if random.uniform(0, 1) < epsilon:
+                if random.uniform(0, 1) < epsilon:
                         action = random.randint(0, 3)
-                    else:
+                else:
                         action = max(self.q_table_emp_agent[state], key=self.q_table_emp_agent[state].get)
                     
-                    new_pos = self.next_position(current_pos, action)
-                    new_state = self.encode_state(*new_pos) + current_quadrant
-                    
-                    emp_reward = float(self.empowerment_grid[new_pos[1], new_pos[0]])
-
+                new_pos = self.next_position(current_pos, action)
+                new_state = self.encode_state(*new_pos) + current_quadrant
+                if new_state not in self.q_table_emp_agent:
+                        self.q_table_emp_agent[new_state] = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1}
+                emp_reward = float(self.empowerment_grid[new_pos[1], new_pos[0]])
+                #print(f"Empowerment en {new_pos}: {emp_reward}")
                     # Actualización Q-learning, picadita
-                next_state_values = self.get_state_value(new_state)
-                max_next_q = float(max(next_state_values.values()))
-                current_q = float(self.q_table[state].get(action, 0))
-                
-                # Fórmula Q-learning
-                new_q = current_q + alpha * (emp_reward + gamma * max_next_q - current_q)
-                self.q_table[state][action] = new_q
-
+                self.q_table_emp_agent[state][action] += alpha * (emp_reward + gamma * max(self.q_table_emp_agent[new_state].values()) - self.q_table_emp_agent[state][action])
                 current_pos = new_pos
                 self.agent_pos = current_pos
                 
                 self.render()
                 time.sleep(0.1)
                 steps += 1
+                epsilon = max(min_epsilon, epsilon * decay_rate)
 
                 if new_pos == max_emp_pos:
                         print(f"Agente emp en posición de máximo empowerment.")
@@ -224,9 +261,6 @@ class CombinedEnv(MiniGridEnv):
                 if steps >= max_steps:
                         break
                 
-                epsilon = max(min_epsilon, epsilon * decay_rate)
-                self.reward_positions = orifinal_reward_positions.copy()
-
         self.save_q_table(self.q_table_emp_agent, "q_table_empql21.txt")
             
         return successE
@@ -236,8 +270,10 @@ class CombinedEnv(MiniGridEnv):
         min_steps_to_goal = float('inf')
         best_episode = None
         successful_episodes = 0
-        
-        self.initialize_q_table(2)
+        self.current_agent= 'rl'
+        self.q_table_rl_agent = self.load_q_table("q_table21.txt")
+        if not self.q_table_rl_agent:
+            self.initialize_q_table(2)
         
         for episode in range(episodes):
             current_pos = self.rl_agent_start_pos
@@ -247,8 +283,9 @@ class CombinedEnv(MiniGridEnv):
             
             self._gen_grid(self.grid.width, self.grid.height)
             current_quadrant = self.quadrants.index(self.current_quadrant)
+
             
-            while steps < max_steps and rewards_collected < 4:
+            while steps < max_steps and rewards_collected < 1:
                 state = self.encode_state(*current_pos) + current_quadrant
 
                 if state not in self.q_table_rl_agent:
@@ -268,14 +305,13 @@ class CombinedEnv(MiniGridEnv):
                 reward = -1
 
                 if new_pos in self.reward_positions:
-                    reward += 1 
+                    reward += 30 
                     print(f"Recompensa recogida en {new_pos}")
                     rewards_collected += 1
                     self.reward_positions.remove(new_pos)
                     self.grid.set(*new_pos, None)
 
-                    if rewards_collected == 4:
-                        reward += 10
+                    if rewards_collected == 1:
                         successful_episodes += 1 
                         total_reward += reward
 
@@ -300,25 +336,18 @@ class CombinedEnv(MiniGridEnv):
 
         print(f"\nEntrenamiento completado con {successful_episodes} episodios exitosos de {episodes}")
         self.save_q_table(self.q_table_rl_agent, "q_table21.txt")
-        if rewards_collected == 4:
+        if rewards_collected == 1:
                 done = True
-                print(f"Se lograron recoger las 4 recompensas en el episodio {episode}.")
+                print(f"Se lograron recoger las 1 recompensas en el episodio {episode}.")
         else:
-                print("No se lograron recoger las 4 recompensas en ningún episodio.")
+                print("No se lograron recoger las 1 recompensas en ningún episodio.")
         return rewards_collected
-
-    def save_q_table(self, q_table, filename):
-        with open(filename, "w") as file:
-            for state, actions in q_table.items():
-                file.write(f"State {state}: {actions}\n")
 
     def run_agents(self):
         print("Iniciando el ambiente combinado...")
         
-        # Inicializar Q-tables
-        self.initialize_q_table(1)  # Empowerment
-        self.initialize_q_table(2)  # RL
-
+        self.q_table_emp_agent = self.load_q_table("q_table_empql21.txt")
+        self.q_table_rl_agent = self.load_q_table("q_table21.txt")
         for episode in range(self.total_episodes):
             print(f"\n--- Episodio {episode + 1} ---")
             
@@ -335,28 +364,42 @@ class CombinedEnv(MiniGridEnv):
             successE = False
 
             while not done and steps < max_steps_per_episode:
+
+                self.current_agent = self.supervisor_decision(self)
+
+                if self.current_agent == "emp":
+                    self.agent_color = "blue"
+                else:
+                    self.agent_color = "red"  # Color normal para RL
+                # Correr agentes
                 self.render()
+                self.current_agent = current_agent
                 print(f"Agente actual: {current_agent}")
                 print(f"Posición actual: {self.current_agent_pos}")
-
-                # Correr agentes
                 if current_agent == 'rl':
                     self.rl_agent_start_pos = self.current_agent_pos
                     success = self.q_rl_agent(episodes=1, max_steps=100)
                     self.current_agent_pos = self.agent_pos
-                    if self.remaining_rewards == 0 or self.collected_rewards == 4 or success == 4:  
+                    if self.remaining_rewards == 0 or self.collected_rewards == 1 or success == 1: 
                         current_agent = 'emp'
                         print("Cambio de agente a Empowerment.")
                 else:
+                    print(f"color del agente: {self.agent_color}")
                     self.emp_agent_start_pos = self.current_agent_pos
                     successE = self.q_emp_agent(episodes=1, max_steps=100)
                     self.current_agent_pos = self.agent_pos
-
+                    if successE == True:
+                        print("Cambio de agente a RL.")
+                        current_agent = 'rl'
+                        self.rl_agent_start_pos = self.current_agent_pos
+                        self.current_agent = 'rl'
+                        success = self.q_rl_agent(episodes=1, max_steps=100)
+                        self.current_agent_pos = self.agent_pos
 
                 steps += 1
 
                 # Fin de episodio
-                if steps >= max_steps_per_episode or (success == 4 and successE == True):
+                if steps >= max_steps_per_episode or (success == 1 and successE == True):
                     done = True
                     print(f"Episodio {episode + 1} completado. Bloques (Reloads): {steps}")
                     break
