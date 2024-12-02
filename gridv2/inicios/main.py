@@ -158,7 +158,7 @@ class SimpleEnv(MiniGridEnv):
             for state, actions in self.q_table.items():
                 file.write(f"State {state}: {actions}\n")
 
-    def q_learning_agent(self, alpha=0.2, gamma=0.9, epsilon=0.92, min_epsilon=0.01, decay_rate=0.98, max_steps=110, episodes=2500):
+    def q_learning_agent(self, alpha=0.2, gamma=0.9, epsilon=0.92, min_epsilon=0.01, decay_rate=0.98, max_steps=90, episodes=1500):
             """ Función para representar al segundo agente, que usa reinforcement learning
                 mediante Q-Learning, el objetivo de este agente es recolectar las recompensas
                 en el menor numero de pasos posibles. """
@@ -267,7 +267,7 @@ class SimpleEnv(MiniGridEnv):
         self.q_learning_agent()
 
 def main():
-    num_pasos = 5 
+    num_pasos = 6 
     env = SimpleEnv(render_mode="human", num_pasos=num_pasos)
 
     env.run_agents() # Número de pasos para calcular el empowerment
