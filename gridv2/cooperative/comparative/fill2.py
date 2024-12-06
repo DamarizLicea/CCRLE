@@ -3,6 +3,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import softmax
 
+"""
+Este script lee la tabla Q comparativa y calcula la matriz Q ponderada para cada estado.
+Luego, selecciona el agente a utilizar en cada estado basado en el softmax de los valores de Q.
+Por último, resume cuántas veces se eligió más Q_RL o Q_Emp basado en los valores ponderados, y los 
+guarda en un archivo de texto.
+"""
+
 def read_comparative_q_table(filename):
     comparative_q_table = {}
     with open(filename, 'r') as file:
@@ -17,34 +24,9 @@ def read_comparative_q_table(filename):
             comparative_q_table[state] = {'Q_RL': q_rl, 'Q_Emp': q_emp, 'Recompensas': recompensas}
     return comparative_q_table
 
-def write_comparative_q_table(filename, comparative_q_table):
-    with open(filename, 'w') as file:
-        file.write("Estado\tQ_RL\tQ_Emp\tRecompensas\n")
-        file.write("-" * 100 + "\n")
-        for state, values in comparative_q_table.items():
-            file.write(f"{state}\t{values['Q_RL']}\t{values['Q_Emp']}\t{values['Recompensas']}\n")
-
-def duplicate_states_with_rewards(comparative_q_table):
-    new_comparative_q_table = {}
-    for state, values in comparative_q_table.items():
-        # Recompensas True
-        new_comparative_q_table[(state, True)] = {
-            'Q_RL': values['Q_RL'],
-            'Q_Emp': values['Q_Emp'],
-            'Recompensas': True
-        }
-        # Recompensas False
-        new_comparative_q_table[(state, False)] = {
-            'Q_RL': values['Q_RL'],
-            'Q_Emp': values['Q_Emp'],
-            'Recompensas': False
-        }
-    return new_comparative_q_table
-
-
 def calculate_weighted_q_matrix(comparative_q_table, rewards_remaining):
     """
-    Calcula una matriz Q ponderada para combinar Q_RL y Q_Emp basado en la presencia de recompensas.
+    Calcular la matriz Q ponderada para cada estado en la tabla Q comparativa.
     """
     all_states = []
     weighted_q_values = []
@@ -80,8 +62,10 @@ def calculate_weighted_q_matrix(comparative_q_table, rewards_remaining):
 
 
 
-
 def select_agent_based_on_softmax(comparative_q_table):
+    """
+    Seleccionar el agente a utilizar en cada estado basado en el softmax de los valores de Q.
+    """
     agent_selection = {'RL': 0, 'Empowerment': 0}
     state_agent_selection = {}
     agent_selection_rewards_true = {'RL': 0, 'Empowerment': 0}
@@ -139,13 +123,6 @@ agent_selection, state_agent_selection, agent_selection_rewards_true, agent_sele
 def summarize_agent_preferences(states, weighted_q_values):
     """
     Resumen de cuántas veces se eligió más Q_RL o Q_Emp basado en los valores ponderados.
-
-    Args:
-        states (list): Lista de estados procesados.
-        weighted_q_values (list): Lista de matrices Q ponderadas para cada estado.
-
-    Returns:
-        None: Genera una gráfica de barras mostrando las preferencias.
     """
     rl_preference_count = 0  
     emp_preference_count = 0 

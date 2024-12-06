@@ -1,6 +1,12 @@
+"""
+Este archivo combina las Q-tables de los agentes RL y EmpQL en un solo archivo de texto.
+No es necesario ejecutar este script, ya que el archivo 'q_table_combinada21.txt' ya está incluido en el repositorio.
+Solo se ejecuta si cambian las Q-tables de los agentes RL y EmpQL.
+"""
+
 def parse_qtable(file_path):
     """
-    Convierte una Q-table en formato texto plano a un diccionario de Python.
+    Convierte la Q-table de formato texto plano a un diccionario de Python.
     """
     q_table = {}
     with open(file_path, 'r') as file:
