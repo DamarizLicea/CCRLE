@@ -10,6 +10,14 @@ import random
 import time
 import os
 
+"""
+Este script implementa un entorno de MiniGrid que combina los agentes Empowerment y RL.
+El agente Empowerment se entrena con Q-learning usando el empowerment como recompensa.
+El agente RL se entrena con Q-learning normal y epsilon greedy.
+El entorno se ejecuta en episodios, alternando entre los dos agentes en cada episodio.
+"""
+
+
 class CombinedEnv(MiniGridEnv):
     def __init__(self, size=13, emp_agent_start_pos=(2, 2), rl_agent_start_pos=(6, 6), 
                  emp_agent_start_dir=0, rl_agent_start_dir=0, 
@@ -72,34 +80,15 @@ class CombinedEnv(MiniGridEnv):
         self.render()
         time.sleep(2)
 
-    def put_ob_color(self, obj, x, y, color="green"):
-        """ Pone un objeto en una celda con un color específico. """
-        obj.color = COLOR_TO_IDX[color]
-        self.grid.set(x, y, obj)
-
-    def supervisor_decision(self):
-        """
-        Decide qué agente debe tomar el control según el estado actual del entorno.
-        """
-        if self.remaining_rewards > 0:
-            return 'rl'  # Agente Q_RL toma el control
-        else:
-            return 'emp'  # Agente Q_emp toma el control
-
     def place_rewards_in_quadrant(self):
+        """ Coloca una recompensa en el centro del cuadrante actual. """
         x_center, y_center = self.current_quadrant
-        # que solo me ponga una en el centro del cuadrante
         reward_color = 'grey' if self.current_agent == 'emp' else 'green'
         self.reward_positions = [(x_center, y_center)]
         rewar = Goal()
         rewar.color = reward_color
         self.put_obj(rewar, x_center, y_center)
 
-    def clear_rewards(self):
-        """ Elimina todas las recompensas del tablero. """
-        for pos in self.reward_positions:
-            self.grid.set(*pos, None)
-        self.reward_positions.clear()
 
     def get_reachable_states(self, start_x, start_y, steps=1):
         """ Obtiene los estados alcanzables desde una posición inicial en un número de pasos dado. """
@@ -344,6 +333,7 @@ class CombinedEnv(MiniGridEnv):
         return rewards_collected
 
     def run_agents(self):
+        """Ejecuta a los agentes Empowerment y RL en el ambiente combinado."""
         print("Iniciando el ambiente combinado...")
         
         self.q_table_emp_agent = self.load_q_table("q_table_empql21.txt")
@@ -364,8 +354,6 @@ class CombinedEnv(MiniGridEnv):
             successE = False
 
             while not done and steps < max_steps_per_episode:
-
-                self.current_agent = self.supervisor_decision(self)
 
                 if self.current_agent == "emp":
                     self.agent_color = "blue"
