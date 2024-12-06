@@ -1,6 +1,8 @@
 import os
 import json
-from main import SimpleEnv
+import sys
+sys.path.append(os.path.abspath('..'))
+from inicios.main import SimpleEnv
 from minigrid.core.world_object import Wall
 import numpy as np
 import matplotlib.pyplot as plt

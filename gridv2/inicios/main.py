@@ -16,14 +16,15 @@ class SimpleEnv(MiniGridEnv):
         """ Constructor de la clase que setea los parametros
             para un entorno de 13 x 13 con un agente en la posición (6, 6) y
             donde la dirección del agente se bloquea a 0"""
-        self.agent_start_pos = agent_start_pos 
+        
         self.agent_start_dir = agent_start_dir
         self.num_pasos = num_pasos
         mission_space = MissionSpace(mission_func=self._gen_mission)
         self.quadrants = [(3, 3), (3, 9), (9, 3), (9, 9)]  
         self.current_quadrant = None
         self.reward_positions = []
-        self.grid_size = 13  
+        self.grid_size = 13
+        self.agent_start_pos = (random.randint(1, self.grid_size - 2), random.randint(1, self.grid_size- 2))
 
         if max_steps is None:
             max_steps = 4 * size**2
@@ -54,7 +55,7 @@ class SimpleEnv(MiniGridEnv):
         self.place_rewards_in_quadrant()
         self.empowerment_grid = self.calculate_empowerment_matrix()
         max_empowerment_pos = self.find_max_empowerment_position()
-        self.agent_pos = self.agent_start_pos
+        self.agent_pos = (random.randint(1, self.grid_size - 2), random.randint(1, self.grid_size - 2))
         self.agent_dir = self.agent_start_dir
         self.mission = "Obtener todas las recompensas."
         self.render()
@@ -139,21 +140,6 @@ class SimpleEnv(MiniGridEnv):
         # quadrant_index = 
         return (x * 100 + y * 10) + quadrant_index 
 
-    def auto_move(self):
-        """ Función para mover al agente automáticamente por todo el tablero
-            al calcular el empowerment. """
-        for row in range(1, self.grid.height - 1):
-            for col in range(1, self.grid.width - 1):
-                self.agent_pos = (col, row)
-                self.agent_dir = 0
-                self.render()
-                print(f"Agente en posición (x, y): ({col}, {row})")
-                time.sleep(0.1)
-
-        center_x, center_y = self.grid.width // 2, self.grid.height // 2
-        self.agent_pos = (center_x, center_y)
-        self.agent_dir = 0
-        self.render()
 
     # ------------------ Q-learning ------------------ #
     def initialize_q_table(self):
@@ -164,15 +150,15 @@ class SimpleEnv(MiniGridEnv):
                 for quadrant_index in range(len(self.quadrants)):
                     # Codificamos el estado con el cuadrante de recompensa
                     state = (col * 100 + row * 10) + quadrant_index
-                    self.q_table[state] = {0: 0, 1: 0, 2: 0, 3: 0}
+                    self.q_table[state] = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1}
 
-    def save_q_table(self, filename="q_table.txt"):
+    def save_q_table(self, filename="q_tableA.txt"):
         """ Función para guardar la Q-table en un archivo de texto."""
         with open(filename, "w") as file:
             for state, actions in self.q_table.items():
                 file.write(f"State {state}: {actions}\n")
 
-    def q_learning_agent(self, alpha=0.2, gamma=0.9, epsilon=0.9, min_epsilon=0.01, decay_rate=0.95, max_steps=70, episodes=1500):
+    def q_learning_agent(self, alpha=0.2, gamma=0.9, epsilon=0.92, min_epsilon=0.01, decay_rate=0.98, max_steps=90, episodes=1500):
             """ Función para representar al segundo agente, que usa reinforcement learning
                 mediante Q-Learning, el objetivo de este agente es recolectar las recompensas
                 en el menor numero de pasos posibles. """
@@ -180,6 +166,7 @@ class SimpleEnv(MiniGridEnv):
             min_steps_to_goal = float('inf')
             best_episode = None
             successful_episodes = 0
+            visited_states = set()
 
             for episode in range(episodes):
                 current_pos = self.agent_start_pos
@@ -197,7 +184,7 @@ class SimpleEnv(MiniGridEnv):
                     state = self.encode_state(*current_pos) + current_quadrant
                     # Asegurar que el estado existe en la Q-table
                     if state not in self.q_table:
-                        self.q_table[state] = {0: 0, 1: 0, 2: 0, 3: 0}
+                        self.q_table[state] = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1}
 
                     # Exploración o explotación con probabilidad epsilon
                     if random.uniform(0, 1) < epsilon:
@@ -210,19 +197,24 @@ class SimpleEnv(MiniGridEnv):
 
                     # Inicializar nuevo estado si no existe
                     if new_state not in self.q_table:
-                        self.q_table[new_state] = {0: 0, 1: 0, 2: 0, 3: 0}
+                        self.q_table[new_state] = {0: 0.1, 1: 0.1, 2: 0.1, 3: 0.1}
 
-                    reward = -0.1
+                    reward = -0.01
                     if new_pos in current_reward_positions:
-                        reward += 10
+                        reward += 40
                         rewards_collected += 1
                         print(f"Recompensa encontrada en {new_pos}. Recompensas recogidas: {rewards_collected}")
                         current_reward_positions.remove(new_pos)
                         self.grid.set(*new_pos, None)
                         self.reward_positions.remove(new_pos)
+                        visited_states.add(current_pos)
+                        if current_pos in visited_states:
+                            reward -= 10
+
+                        # como lo multo si se cicla en una celda donde ya no hay recompensa?
 
                         if rewards_collected == 4:
-                            reward += 25
+                            reward += 100
                             successful_episodes += 1
                             print(f"¡Todas las recompensas recogidas en {steps + 1} pasos!")
                             if steps+1 < min_steps_to_goal:
@@ -269,15 +261,13 @@ class SimpleEnv(MiniGridEnv):
     def run_agents(self):
         """Función auxiliar para ejecutar los agentes en secuencia."""
         self.reset()
-        print("Ejecutando el primer agente (empowerment).")
-        self.auto_move()
         print("El primer agente terminó su recorrido.\nIniciando al agente de Q-Learning...")
         
         self.initialize_q_table()
         self.q_learning_agent()
 
 def main():
-    num_pasos = 5 
+    num_pasos = 6 
     env = SimpleEnv(render_mode="human", num_pasos=num_pasos)
 
     env.run_agents() # Número de pasos para calcular el empowerment
