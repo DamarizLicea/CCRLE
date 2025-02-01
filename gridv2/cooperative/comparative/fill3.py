@@ -8,7 +8,7 @@ from datetime import datetime
 Resultados de la ejecucion de este script:
     Revisar registro de selección de agentes .txt
     Revisar selección de agentes .txt
-    Falta el grafico, pero se necesita ejecutar el script en un entorno de python
+    El grafico está en la carpeta images, se llama graficaf3.png
 
 """
 
