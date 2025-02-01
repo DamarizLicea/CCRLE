@@ -19,7 +19,7 @@ def parse_qtable(file_path):
 
 
 q_table_rl = parse_qtable(r'C:\Users\Damarindo\Desktop\Estancia\gridv2\inicios\q_table.txt')
-q_table_emp = parse_qtable(r'C:\Users\Damarindo\Desktop\Estancia\gridv2\inicios\q_table_empql2.txt')
+q_table_emp = parse_qtable(r'C:\Users\Damarindo\Desktop\Estancia\gridv2\cooperative\states_output.txt')
 q_table_combinada = []
 
 for state in q_table_rl.keys():
